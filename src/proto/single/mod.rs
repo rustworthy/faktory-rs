@@ -1,3 +1,5 @@
+#[cfg(feature = "ent")]
+use chrono::Duration;
 use chrono::{DateTime, Utc};
 use derive_builder::Builder;
 use std::collections::HashMap;
@@ -142,13 +144,46 @@ impl JobBuilder {
         self
     }
 
-    /// When Faktory should expire this job
+    /// When Faktory should expire this job.
+    ///
+    /// Faktory Enterprise allows for expiring jobs. This is setter for "expires_at"
+    /// field in the job's custom data.
+    /// ```
+    /// use faktory::JobBuilder;
+    /// use chrono::{Duration, Utc};
+    ///
+    /// let _job = JobBuilder::default()
+    ///     .kind("order")
+    ///     .args(vec!["ISBN-13:9781718501850"])
+    ///     .expires_at(Utc::now() + Duration::hours(1))
+    ///     .build()
+    ///     .unwrap();
     #[cfg(feature = "ent")]
     pub fn expires_at(&mut self, dt: DateTime<Utc>) -> &mut Self {
         let custom = self.custom.get_or_insert_with(HashMap::new);
         let dt = serde_json::Value::from(dt.to_rfc3339());
         custom.insert("expires_at".into(), dt);
         self
+    }
+
+    /// In what period of time from now (UTC) the Faktory should expire this job.
+    ///
+    /// Use this setter when you are unwilling to populate the "expires_at" field in custom
+    /// options with some exact date and time, e.g.:
+    /// ```
+    /// use faktory::JobBuilder;
+    /// use chrono::Duration;
+    ///
+    /// let _job = JobBuilder::default()
+    ///     .kind("order")
+    ///     .args(vec!["ISBN-13:9781718501850"])
+    ///     .expires_in(Duration::weeks(1))
+    ///     .build()
+    ///     .unwrap();
+    /// ```
+    #[cfg(feature = "ent")]
+    pub fn expires_in(&mut self, ttl: Duration) -> &mut Self {
+        self.expires_at(Utc::now() + ttl)
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -347,14 +382,23 @@ mod test {
     #[test]
     #[cfg(feature = "ent")]
     fn test_expiration_feature_fot_enterprise_faktory() {
-        let exp_at = Utc::now() + chrono::Duration::seconds(300);
-        let job = JobBuilder::default()
+        let five_min = chrono::Duration::seconds(300);
+        let exp_at = Utc::now() + five_min;
+        let job1 = JobBuilder::default()
             .kind("order")
             .args(vec!["ISBN-13:9781718501850"])
             .expires_at(exp_at)
             .build()
             .unwrap();
-        let stored = job.custom.get("expires_at").unwrap();
+        let stored = job1.custom.get("expires_at").unwrap();
         assert_eq!(stored, &serde_json::Value::from(exp_at.to_rfc3339()));
+
+        let job2 = JobBuilder::default()
+            .kind("order")
+            .args(vec!["ISBN-13:9781718501850"])
+            .expires_in(five_min)
+            .build()
+            .unwrap();
+        assert!(job2.custom.get("expires_at").is_some());
     }
 }
