@@ -142,6 +142,15 @@ impl JobBuilder {
         self
     }
 
+    /// When Faktory should expire this job
+    #[cfg(feature = "ent")]
+    pub fn expires_at(&mut self, dt: DateTime<Utc>) -> &mut Self {
+        let custom = self.custom.get_or_insert_with(HashMap::new);
+        let dt = serde_json::Value::from(dt.to_rfc3339());
+        custom.insert("expires_at".into(), dt);
+        self
+    }
+
     fn validate(&self) -> Result<(), String> {
         if let Some(ref priority) = self.priority {
             if *priority > Some(JOB_PRIORITY_MAX) {
@@ -333,5 +342,19 @@ mod test {
 
         assert_ne!(job1.jid, job2.jid);
         assert_ne!(job1.created_at, job2.created_at);
+    }
+
+    #[test]
+    #[cfg(feature = "ent")]
+    fn test_expiration_feature_fot_enterprise_faktory() {
+        let exp_at = Utc::now() + chrono::Duration::seconds(300);
+        let job = JobBuilder::default()
+            .kind("order")
+            .args(vec!["ISBN-13:9781718501850"])
+            .expires_at(exp_at)
+            .build()
+            .unwrap();
+        let stored = job.custom.get("expires_at").unwrap();
+        assert_eq!(stored, &serde_json::Value::from(exp_at.to_rfc3339()));
     }
 }
