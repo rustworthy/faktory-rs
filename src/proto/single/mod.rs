@@ -444,4 +444,28 @@ mod test {
         let stored = job.custom.get("unique_for").unwrap();
         assert_eq!(stored, &serde_json::Value::from(60));
     }
+
+    #[test]
+    #[cfg(feature = "ent")]
+    fn test_same_pupose_setters_applied_simultaneously() {
+        let expires_at1 = Utc::now() + chrono::Duration::seconds(300);
+        let expires_at2 = Utc::now() + chrono::Duration::seconds(300);
+        let job = JobBuilder::default()
+            .kind("order")
+            .args(vec!["ISBN-13:9781718501850"])
+            .unique_for(60)
+            .add_to_custom_data("unique_for".into(), 600)
+            .unique_for(40)
+            .add_to_custom_data("expires_at".into(), expires_at1.to_rfc3339())
+            .expires_at(expires_at2)
+            .build()
+            .unwrap();
+        let stored_unique_for = job.custom.get("unique_for").unwrap();
+        assert_eq!(stored_unique_for, &serde_json::Value::from(40));
+        let stored_expires_at = job.custom.get("expires_at").unwrap();
+        assert_eq!(
+            stored_expires_at,
+            &serde_json::Value::from(expires_at2.to_rfc3339())
+        )
+    }
 }
