@@ -394,12 +394,17 @@ mod test {
         assert_ne!(job1.created_at, job2.created_at);
     }
 
+    fn half_stuff() -> JobBuilder {
+        let mut job = JobBuilder::default();
+        job.args(vec!["ISBN-13:9781718501850"]);
+        job.kind("order");
+        job
+    }
+
     #[test]
     fn test_arbitrary_custom_data_setter() {
         let expires_at = Utc::now() + chrono::Duration::seconds(300);
-        let job = JobBuilder::default()
-            .kind("order")
-            .args(vec!["ISBN-13:9781718501850"])
+        let job = half_stuff()
             .add_to_custom_data("expires_at".into(), expires_at.to_rfc3339())
             .build()
             .unwrap();
@@ -414,18 +419,14 @@ mod test {
     fn test_expiration_feature_for_enterprise_faktory() {
         let five_min = chrono::Duration::seconds(300);
         let exp_at = Utc::now() + five_min;
-        let job1 = JobBuilder::default()
-            .kind("order")
-            .args(vec!["ISBN-13:9781718501850"])
+        let job1 = half_stuff()
             .expires_at(exp_at)
             .build()
             .unwrap();
         let stored = job1.custom.get("expires_at").unwrap();
         assert_eq!(stored, &serde_json::Value::from(exp_at.to_rfc3339()));
 
-        let job2 = JobBuilder::default()
-            .kind("order")
-            .args(vec!["ISBN-13:9781718501850"])
+        let job2 = half_stuff()
             .expires_in(five_min)
             .build()
             .unwrap();
@@ -435,9 +436,7 @@ mod test {
     #[test]
     #[cfg(feature = "ent")]
     fn test_uniqueness_faeture_for_enterprise_faktory() {
-        let job = JobBuilder::default()
-            .kind("order")
-            .args(vec!["ISBN-13:9781718501850"])
+        let job = half_stuff()
             .unique_for(60)
             .build()
             .unwrap();
@@ -447,12 +446,10 @@ mod test {
 
     #[test]
     #[cfg(feature = "ent")]
-    fn test_same_pupose_setters_applied_simultaneously() {
+    fn test_same_purpose_setters_applied_simultaneously() {
         let expires_at1 = Utc::now() + chrono::Duration::seconds(300);
         let expires_at2 = Utc::now() + chrono::Duration::seconds(300);
-        let job = JobBuilder::default()
-            .kind("order")
-            .args(vec!["ISBN-13:9781718501850"])
+        let job = half_stuff()
             .unique_for(60)
             .add_to_custom_data("unique_for".into(), 600)
             .unique_for(40)
