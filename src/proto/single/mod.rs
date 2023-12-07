@@ -144,6 +144,13 @@ impl JobBuilder {
         self
     }
 
+    /// Set arbitrary key-value pairs to this job's custom data hash
+    pub fn add_to_custom_data(&mut self, k: String, v: impl Into<serde_json::Value>) -> &mut Self {
+        let custom = self.custom.get_or_insert_with(HashMap::new);
+        custom.insert(k, v.into());
+        self
+    }
+
     /// When Faktory should expire this job.
     ///
     /// Faktory Enterprise allows for expiring jobs. This is setter for "expires_at"
@@ -393,6 +400,21 @@ mod test {
     }
 
     #[test]
+    fn test_arbitrary_custom_data_setter() {
+        let expires_at = Utc::now() + chrono::Duration::seconds(300);
+        let job = JobBuilder::default()
+            .kind("order")
+            .args(vec!["ISBN-13:9781718501850"])
+            .add_to_custom_data("expires_at".into(), expires_at.to_rfc3339())
+            .build()
+            .unwrap();
+        assert_eq!(
+            job.custom.get("expires_at").unwrap(),
+            &serde_json::Value::from(expires_at.to_rfc3339())
+        );
+    }
+
+    #[test]
     #[cfg(feature = "ent")]
     fn test_expiration_feature_for_enterprise_faktory() {
         let five_min = chrono::Duration::seconds(300);
@@ -418,7 +440,7 @@ mod test {
     #[test]
     #[cfg(feature = "ent")]
     fn test_uniqueness_faeture_for_enterprise_faktory() {
-        let job1 = JobBuilder::default()
+        let job = JobBuilder::default()
             .kind("order")
             .args(vec!["ISBN-13:9781718501850"])
             .unique_for(60)
