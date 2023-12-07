@@ -201,6 +201,21 @@ impl JobBuilder {
         self.add_to_custom_data("unique_for".into(), secs)
     }
 
+    /// Remove unique lock for this job right before the job starts executing.
+    #[cfg(feature = "ent")]
+    pub fn unique_until_start(&mut self) -> &mut Self {
+        self.add_to_custom_data("unique_until".into(), "start")
+    }
+
+    /// Do not remove unique lock for this job until it successfully finishes.
+    ///
+    /// The Faktory's default value for "unique_until" is "default". This method
+    /// exists on the JobBuilder for completeness
+    #[cfg(feature = "ent")]
+    pub fn unique_until_success(&mut self) -> &mut Self {
+        self.add_to_custom_data("unique_until".into(), "success")
+    }
+
     fn validate(&self) -> Result<(), String> {
         if let Some(ref priority) = self.priority {
             if *priority > Some(JOB_PRIORITY_MAX) {
@@ -419,17 +434,11 @@ mod test {
     fn test_expiration_feature_for_enterprise_faktory() {
         let five_min = chrono::Duration::seconds(300);
         let exp_at = Utc::now() + five_min;
-        let job1 = half_stuff()
-            .expires_at(exp_at)
-            .build()
-            .unwrap();
+        let job1 = half_stuff().expires_at(exp_at).build().unwrap();
         let stored = job1.custom.get("expires_at").unwrap();
         assert_eq!(stored, &serde_json::Value::from(exp_at.to_rfc3339()));
 
-        let job2 = half_stuff()
-            .expires_in(five_min)
-            .build()
-            .unwrap();
+        let job2 = half_stuff().expires_in(five_min).build().unwrap();
         assert!(job2.custom.get("expires_at").is_some());
     }
 
@@ -438,10 +447,22 @@ mod test {
     fn test_uniqueness_faeture_for_enterprise_faktory() {
         let job = half_stuff()
             .unique_for(60)
+            .unique_until_start()
             .build()
             .unwrap();
-        let stored = job.custom.get("unique_for").unwrap();
-        assert_eq!(stored, &serde_json::Value::from(60));
+        let stored_unique_for = job.custom.get("unique_for").unwrap();
+        let stored_unique_until = job.custom.get("unique_until").unwrap();
+        assert_eq!(stored_unique_for, &serde_json::Value::from(60));
+        assert_eq!(stored_unique_until, &serde_json::Value::from("start"));
+
+        let job = half_stuff()
+            .unique_for(60)
+            .unique_until_success()
+            .build()
+            .unwrap();
+
+        let stored_unique_until = job.custom.get("unique_until").unwrap();
+        assert_eq!(stored_unique_until, &serde_json::Value::from("success"));
     }
 
     #[test]
