@@ -232,6 +232,59 @@ impl Job {
     }
 }
 
+/// Info on job execution progress.
+///
+/// In Enterprise Faktory, a client executing a job can report on the execution
+/// progress, provided the job is trackable. A trackable job is the one with "track":1
+/// specified in the custom data hash.
+#[derive(Debug, Serialize, Builder)]
+#[builder(
+    setter(into),
+    build_fn(name = "try_build", private, validate = "Self::validate")
+)]
+pub struct ProgressUpdate {
+    /// Id of the tracked job.
+    pub jid: String,
+
+    /// Percentage of the job's completion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default = "None")]
+    pub percent: Option<u8>,
+
+    /// Arbitrary description that may be useful to whoever is tracking the job's progress.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default = "None")]
+    pub desc: Option<String>,
+
+    /// Allows to extend the job's reservation, if more time needed to execute it.
+    ///
+    /// Note that you cannot decrease the initial [reservation](struct.Job.html#structfield.reserve_for).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default = "None")]
+    pub reserve_until: Option<DateTime<Utc>>,
+}
+
+impl ProgressUpdateBuilder {
+    fn validate(&self) -> Result<(), String> {
+        if let Some(ref percent) = self.percent {
+            if *percent > Some(100) {
+                return Err("`percent` indicates job execution progress and should be in the range from 0 to 100 inclusive".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    /// Builds an instance of ProgressUpdate.
+    pub fn build(&self) -> Result<ProgressUpdate, error::Client> {
+        let progress = self
+            .try_build()
+            .map_err(|err| error::Client::ProgressUpdateMalformed {
+                desc: err.to_string(),
+            })?;
+        Ok(progress)
+    }
+}
+
 pub fn write_command<W: Write, C: FaktoryCommand>(w: &mut W, command: &C) -> Result<(), Error> {
     command.issue::<W>(w)?;
     Ok(w.flush()?)
