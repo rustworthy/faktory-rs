@@ -186,6 +186,19 @@ impl JobBuilder {
         self.expires_at(Utc::now() + ttl)
     }
 
+    /// How long the Faktory will not accept duplicates of this job.
+    ///
+    /// The job will be considered unique for kind-args-queue combination.
+    /// Note that uniqueness is best-effort, rather than a guarantee. Check out
+    /// the Enterprise Faktory docs for details on how scheduling, retries and other
+    /// features live together with 'unique_for'.
+    #[cfg(feature = "ent")]
+    pub fn unique_for(&mut self, secs: usize) -> &mut Self {
+        let custom = self.custom.get_or_insert_with(HashMap::new);
+        custom.insert("unique_for".into(), serde_json::Value::from(secs));
+        self
+    }
+
     fn validate(&self) -> Result<(), String> {
         if let Some(ref priority) = self.priority {
             if *priority > Some(JOB_PRIORITY_MAX) {
@@ -195,7 +208,7 @@ impl JobBuilder {
         Ok(())
     }
 
-    /// Builds a new job
+    /// Builds a new job.
     pub fn build(&self) -> Result<Job, error::Client> {
         let job = self
             .try_build()
@@ -381,7 +394,7 @@ mod test {
 
     #[test]
     #[cfg(feature = "ent")]
-    fn test_expiration_feature_fot_enterprise_faktory() {
+    fn test_expiration_feature_for_enterprise_faktory() {
         let five_min = chrono::Duration::seconds(300);
         let exp_at = Utc::now() + five_min;
         let job1 = JobBuilder::default()
@@ -400,5 +413,18 @@ mod test {
             .build()
             .unwrap();
         assert!(job2.custom.get("expires_at").is_some());
+    }
+
+    #[test]
+    #[cfg(feature = "ent")]
+    fn test_uniqueness_faeture_for_enterprise_faktory() {
+        let job1 = JobBuilder::default()
+            .kind("order")
+            .args(vec!["ISBN-13:9781718501850"])
+            .unique_for(60)
+            .build()
+            .unwrap();
+        let stored = job1.custom.get("unique_for").unwrap();
+        assert_eq!(stored, &serde_json::Value::from(60));
     }
 }
