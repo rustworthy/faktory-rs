@@ -167,10 +167,7 @@ impl JobBuilder {
     ///     .unwrap();
     #[cfg(feature = "ent")]
     pub fn expires_at(&mut self, dt: DateTime<Utc>) -> &mut Self {
-        let custom = self.custom.get_or_insert_with(HashMap::new);
-        let dt = serde_json::Value::from(dt.to_rfc3339());
-        custom.insert("expires_at".into(), dt);
-        self
+        self.add_to_custom_data("expires_at".into(), dt.to_rfc3339())
     }
 
     /// In what period of time from now (UTC) the Faktory should expire this job.
@@ -201,9 +198,7 @@ impl JobBuilder {
     /// features live together with 'unique_for'.
     #[cfg(feature = "ent")]
     pub fn unique_for(&mut self, secs: usize) -> &mut Self {
-        let custom = self.custom.get_or_insert_with(HashMap::new);
-        custom.insert("unique_for".into(), serde_json::Value::from(secs));
-        self
+        self.add_to_custom_data("unique_for".into(), secs)
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -446,7 +441,7 @@ mod test {
             .unique_for(60)
             .build()
             .unwrap();
-        let stored = job1.custom.get("unique_for").unwrap();
+        let stored = job.custom.get("unique_for").unwrap();
         assert_eq!(stored, &serde_json::Value::from(60));
     }
 }
