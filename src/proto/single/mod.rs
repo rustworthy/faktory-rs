@@ -118,7 +118,7 @@ pub struct Job {
     ///
     /// This field is read-only.
     #[serde(skip_serializing)]
-    #[builder(default = "None")]
+    #[builder(setter(skip))]
     failure: Option<Failure>,
 
     /// Extra context to include with the job.
