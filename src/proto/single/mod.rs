@@ -13,6 +13,7 @@ use crate::error::{self, Error};
 
 pub use self::cmd::*;
 pub use self::resp::*;
+pub use self::utils::to_iso_string;
 
 const JOB_DEFAULT_QUEUE: &str = "default";
 const JOB_DEFAULT_RESERVED_FOR_SECS: usize = 600;
@@ -167,7 +168,7 @@ impl JobBuilder {
     ///     .unwrap();
     #[cfg(feature = "ent")]
     pub fn expires_at(&mut self, dt: DateTime<Utc>) -> &mut Self {
-        self.add_to_custom_data("expires_at".into(), dt.to_rfc3339())
+        self.add_to_custom_data("expires_at".into(), utils::to_iso_string(dt))
     }
 
     /// In what period of time from now (UTC) the Faktory should expire this job.
@@ -418,14 +419,15 @@ mod test {
 
     #[test]
     fn test_arbitrary_custom_data_setter() {
-        let expires_at = Utc::now() + chrono::Duration::seconds(300);
+        let exp_at = Utc::now() + chrono::Duration::seconds(300);
+        let exp_at_iso = utils::to_iso_string(exp_at);
         let job = half_stuff()
-            .add_to_custom_data("expires_at".into(), expires_at.to_rfc3339())
+            .add_to_custom_data("expires_at".into(), exp_at_iso.clone())
             .build()
             .unwrap();
         assert_eq!(
             job.custom.get("expires_at").unwrap(),
-            &serde_json::Value::from(expires_at.to_rfc3339())
+            &serde_json::Value::from(exp_at_iso)
         );
     }
 
@@ -436,7 +438,10 @@ mod test {
         let exp_at = Utc::now() + five_min;
         let job1 = half_stuff().expires_at(exp_at).build().unwrap();
         let stored = job1.custom.get("expires_at").unwrap();
-        assert_eq!(stored, &serde_json::Value::from(exp_at.to_rfc3339()));
+        assert_eq!(
+            stored,
+            &serde_json::Value::from(utils::to_iso_string(exp_at))
+        );
 
         let job2 = half_stuff().expires_in(five_min).build().unwrap();
         assert!(job2.custom.get("expires_at").is_some());
@@ -474,7 +479,7 @@ mod test {
             .unique_for(60)
             .add_to_custom_data("unique_for".into(), 600)
             .unique_for(40)
-            .add_to_custom_data("expires_at".into(), expires_at1.to_rfc3339())
+            .add_to_custom_data("expires_at".into(), utils::to_iso_string(expires_at1))
             .expires_at(expires_at2)
             .build()
             .unwrap();
@@ -483,7 +488,7 @@ mod test {
         let stored_expires_at = job.custom.get("expires_at").unwrap();
         assert_eq!(
             stored_expires_at,
-            &serde_json::Value::from(expires_at2.to_rfc3339())
+            &serde_json::Value::from(utils::to_iso_string(expires_at2))
         )
     }
 }

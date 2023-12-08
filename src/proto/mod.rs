@@ -12,7 +12,7 @@ mod single;
 
 // commands that users can issue
 pub use self::single::{
-    Ack, Fail, Heartbeat, Info, Job, JobBuilder, Push, QueueAction, QueueControl,
+    to_iso_string, Ack, Fail, Heartbeat, Info, Job, JobBuilder, Push, QueueAction, QueueControl,
 };
 
 // responses that users can see
