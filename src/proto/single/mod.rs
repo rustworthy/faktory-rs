@@ -1,5 +1,3 @@
-#[cfg(feature = "ent")]
-use chrono::Duration;
 use chrono::{DateTime, Utc};
 use derive_builder::Builder;
 use std::collections::HashMap;
@@ -13,7 +11,6 @@ use crate::error::{self, Error};
 
 pub use self::cmd::*;
 pub use self::resp::*;
-pub use self::utils::to_iso_string;
 
 const JOB_DEFAULT_QUEUE: &str = "default";
 const JOB_DEFAULT_RESERVED_FOR_SECS: usize = 600;
@@ -168,7 +165,10 @@ impl JobBuilder {
     ///     .unwrap();
     #[cfg(feature = "ent")]
     pub fn expires_at(&mut self, dt: DateTime<Utc>) -> &mut Self {
-        self.add_to_custom_data("expires_at".into(), utils::to_iso_string(dt))
+        self.add_to_custom_data(
+            "expires_at".into(),
+            dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
+        )
     }
 
     /// In what period of time from now (UTC) the Faktory should expire this job.
@@ -187,7 +187,7 @@ impl JobBuilder {
     ///     .unwrap();
     /// ```
     #[cfg(feature = "ent")]
-    pub fn expires_in(&mut self, ttl: Duration) -> &mut Self {
+    pub fn expires_in(&mut self, ttl: chrono::Duration) -> &mut Self {
         self.expires_at(Utc::now() + ttl)
     }
 
@@ -324,6 +324,13 @@ pub fn write_command_and_await_ok<X: BufRead + Write, C: FaktoryCommand>(
 mod test {
     use super::*;
 
+    // Returns date and time string in the format expected by Faktory.
+    // Serializes date and time into a string as per RFC 3338 and ISO 8601
+    // with nanoseconds precision and 'Z' literal for the timzone column.
+    fn to_iso_string(dt: DateTime<Utc>) -> String {
+        dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
+    }
+
     #[test]
     fn test_job_build_fails_if_kind_missing() {
         let job = JobBuilder::default()
@@ -420,7 +427,7 @@ mod test {
     #[test]
     fn test_arbitrary_custom_data_setter() {
         let exp_at = Utc::now() + chrono::Duration::seconds(300);
-        let exp_at_iso = utils::to_iso_string(exp_at);
+        let exp_at_iso = to_iso_string(exp_at);
         let job = half_stuff()
             .add_to_custom_data("expires_at".into(), exp_at_iso.clone())
             .build()
@@ -438,10 +445,7 @@ mod test {
         let exp_at = Utc::now() + five_min;
         let job1 = half_stuff().expires_at(exp_at).build().unwrap();
         let stored = job1.custom.get("expires_at").unwrap();
-        assert_eq!(
-            stored,
-            &serde_json::Value::from(utils::to_iso_string(exp_at))
-        );
+        assert_eq!(stored, &serde_json::Value::from(to_iso_string(exp_at)));
 
         let job2 = half_stuff().expires_in(five_min).build().unwrap();
         assert!(job2.custom.get("expires_at").is_some());
@@ -479,7 +483,7 @@ mod test {
             .unique_for(60)
             .add_to_custom_data("unique_for".into(), 600)
             .unique_for(40)
-            .add_to_custom_data("expires_at".into(), utils::to_iso_string(expires_at1))
+            .add_to_custom_data("expires_at".into(), to_iso_string(expires_at1))
             .expires_at(expires_at2)
             .build()
             .unwrap();
@@ -488,7 +492,7 @@ mod test {
         let stored_expires_at = job.custom.get("expires_at").unwrap();
         assert_eq!(
             stored_expires_at,
-            &serde_json::Value::from(utils::to_iso_string(expires_at2))
+            &serde_json::Value::from(to_iso_string(expires_at2))
         )
     }
 }

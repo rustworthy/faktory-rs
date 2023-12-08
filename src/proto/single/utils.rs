@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use rand::{thread_rng, Rng};
 
 const JOB_ID_LENGTH: usize = 16;
@@ -9,14 +8,6 @@ pub fn gen_random_jid() -> String {
         .map(char::from)
         .take(JOB_ID_LENGTH)
         .collect()
-}
-
-/// Returns date and time string in the format expected by Faktory.
-///
-/// Serializes date and time into a string as per RFC 3339 and ISO 8601
-/// with nanoseconds precision and 'Z' literal for the timzone column.
-pub fn to_iso_string(dt: DateTime<Utc>) -> String {
-    dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
 }
 
 #[cfg(test)]
