@@ -259,7 +259,7 @@ fn ent_unique_job() {
     // Reminder. Jobs are considered unique for kind + args + queue.
     // So the following two jobs, will be accepted by Faktory, since we
     // are not setting 'unique_for' when creating those jobs:
-    let queue_name = "books";
+    let queue_name = "ent_unique_job";
     let args = vec![Value::from("ISBN-13:9781718501850"), Value::from(100)];
     let job1 = JobBuilder::default()
         .args(args.clone())
@@ -346,4 +346,97 @@ fn ent_unique_job() {
     // and the queue is empty again:
     let had_job = consumer.run_one(0, &[queue_name]).unwrap();
     assert!(!had_job);
+}
+
+#[cfg(feature = "ent")]
+#[test]
+fn ent_unique_job_until_success() {
+    use faktory::error;
+    use std::thread;
+    use std::time;
+
+    skip_if_not_enterprise!();
+
+    let url = learn_faktory_url();
+
+    let queue_name = "ent_unique_job_until_success";
+    let job_type = "order";
+
+    // the job will be being executed for at least 3 seconds,
+    // but is unique for 4 seconds;
+    let difficulty_level = 3;
+    let unique_for = 4;
+
+    let url1 = url.clone();
+    let handle = thread::spawn(move || {
+        // prepare producer and consumer, where the former can
+        // send a job difficulty level as a job's args and the lattter
+        // will sleep for a corresponding period of time, pretending
+        // to work hard:
+        let mut producer_a = Producer::connect(Some(&url1)).unwrap();
+        let mut consumer_a = ConsumerBuilder::default();
+        consumer_a.register(job_type, |job| -> io::Result<_> {
+            let args = job.args().to_owned();
+            let mut args = args.iter();
+            let diffuculty_level = args
+                .next()
+                .expect("job difficulty level is there")
+                .to_owned();
+            let sleep_secs =
+                serde_json::from_value::<i64>(diffuculty_level).expect("a valid number");
+            thread::sleep(time::Duration::from_secs(sleep_secs as u64));
+            Ok(eprintln!("{:?}", job))
+        });
+        let mut consumer_a = consumer_a.connect(Some(&url1)).unwrap();
+        let job = JobBuilder::default()
+            .args(vec![difficulty_level])
+            .kind(job_type)
+            .queue(queue_name)
+            .unique_for(unique_for)
+            .unique_until_success() // Faktory's default
+            .build()
+            .unwrap();
+        producer_a.enqueue(job).unwrap();
+        let had_job = consumer_a.run_one(0, &[queue_name]).unwrap();
+        assert!(had_job);
+    });
+
+    // let spawned thread gain momentum:
+    thread::sleep(time::Duration::from_secs(1));
+
+    // continue
+    let mut producer_b = Producer::connect(Some(&url)).unwrap();
+
+    // this one is a 'duplicate' because the job is still
+    // being executed in the spawned thread:
+    let job = JobBuilder::default()
+        .args(vec![difficulty_level])
+        .kind(job_type)
+        .queue(queue_name)
+        .unique_for(unique_for)
+        .build()
+        .unwrap();
+    // as a result:
+    let res = producer_b.enqueue(job).unwrap_err();
+    if let error::Error::Protocol(error::Protocol::Internal { msg }) = res {
+        assert_eq!(msg, "NOTUNIQUE Job not unique");
+    } else {
+        panic!("Expected protocol error.")
+    }
+
+    handle.join().expect("should join successfully");
+
+    // Not that the job submitted in a spawned thread has been successfully executed
+    // (with ACK sent to server), the producer 'B' can push another one:
+    assert!(producer_b
+        .enqueue(
+            JobBuilder::default()
+                .args(vec![difficulty_level])
+                .kind(job_type)
+                .queue(queue_name)
+                .unique_for(unique_for)
+                .build()
+                .unwrap()
+        )
+        .is_ok());
 }
