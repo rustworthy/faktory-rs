@@ -210,8 +210,8 @@ impl JobBuilder {
 
     /// Do not remove unique lock for this job until it successfully finishes.
     ///
-    /// The Faktory's default value for "unique_until" is "default". This method
-    /// exists on the JobBuilder for completeness
+    /// The Faktory's default value for "unique_until" is "success". This method
+    /// exists on the JobBuilder for completeness.
     #[cfg(feature = "ent")]
     pub fn unique_until_success(&mut self) -> &mut Self {
         self.add_to_custom_data("unique_until".into(), "success")

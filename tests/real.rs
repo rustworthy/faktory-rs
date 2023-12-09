@@ -174,7 +174,7 @@ fn learn_faktory_url() -> String {
 
 #[test]
 #[cfg(feature = "ent")]
-fn expiring_job() {
+fn ent_expiring_job() {
     use std::{thread, time};
 
     let url = learn_faktory_url();
@@ -222,5 +222,115 @@ fn expiring_job() {
 
     // For the non-enterprise edition of Faktory, this assertion will
     // fail, which should be take into account when running the test suite on CI.
+    assert!(!had_job);
+}
+
+#[cfg(feature = "ent")]
+#[test]
+fn ent_unique_job() {
+    use faktory::error;
+    use serde_json::Value;
+
+    let url = learn_faktory_url();
+
+    let job_type = "order";
+
+    // prepare producer and consumer:
+    let mut producer = Producer::connect(Some(&url)).unwrap();
+    let mut consumer = ConsumerBuilder::default();
+    consumer.register(job_type, |job| -> io::Result<_> {
+        Ok(eprintln!("{:?}", job))
+    });
+    let mut consumer = consumer.connect(Some(&url)).unwrap();
+
+    // Reminder. Jobs are considered unique for kind + args + queue.
+    // So the following two jobs, will be accepted by Faktory, since we
+    // are not setting 'unique_for' when creating those jobs:
+    let queue_name = "books";
+    let args = vec![Value::from("ISBN-13:9781718501850"), Value::from(100)];
+    let job1 = JobBuilder::default()
+        .args(args.clone())
+        .kind(job_type)
+        .queue(queue_name)
+        .build()
+        .unwrap();
+    producer.enqueue(job1).unwrap();
+    let job2 = JobBuilder::default()
+        .args(args.clone())
+        .kind(job_type)
+        .queue(queue_name)
+        .build()
+        .unwrap();
+    producer.enqueue(job2).unwrap();
+
+    let had_job = consumer.run_one(0, &[queue_name]).unwrap();
+    assert!(had_job);
+    let had_another_one = consumer.run_one(0, &[queue_name]).unwrap();
+    assert!(had_another_one);
+    let and_that_is_it_for_now = !consumer.run_one(0, &[queue_name]).unwrap();
+    assert!(and_that_is_it_for_now);
+
+    // let's now create a unique job and followed by a job with
+    // the same args and kind (jobtype in Faktory terms) and pushed
+    // to the same queue:
+    let unique_for_secs = 3;
+    let job1 = JobBuilder::default()
+        .args(args.clone())
+        .kind(job_type)
+        .queue(queue_name)
+        .unique_for(unique_for_secs)
+        .build()
+        .unwrap();
+    producer.enqueue(job1).unwrap();
+    // this one is a 'duplicate' ...
+    let job2 = JobBuilder::default()
+        .args(args.clone())
+        .kind(job_type)
+        .queue(queue_name)
+        .unique_for(unique_for_secs)
+        .build()
+        .unwrap();
+    // ... so the server will respond accordingly:
+    let res = producer.enqueue(job2).unwrap_err();
+    if let error::Error::Protocol(error::Protocol::Internal { msg }) = res {
+        assert_eq!(msg, "NOTUNIQUE Job not unique");
+    } else {
+        panic!("Expected protocol error.")
+    }
+
+    let had_job = consumer.run_one(0, &[queue_name]).unwrap();
+    assert!(had_job);
+    let had_another_one = consumer.run_one(0, &[queue_name]).unwrap();
+
+    // For the non-enterprise edition of Faktory, this assertion WILL FAIL:
+    assert!(!had_another_one);
+
+    // Now let's repeat the latter case, but providing different args to job2:
+    let job1 = JobBuilder::default()
+        .args(args.clone())
+        .kind(job_type)
+        .queue(queue_name)
+        .unique_for(unique_for_secs)
+        .build()
+        .unwrap();
+    producer.enqueue(job1).unwrap();
+    // this one is *NOT* a 'duplicate' ...
+    let job2 = JobBuilder::default()
+        .args(vec![Value::from("ISBN-13:9781718501850"), Value::from(101)])
+        .kind(job_type)
+        .queue(queue_name)
+        .unique_for(unique_for_secs)
+        .build()
+        .unwrap();
+    // ... so the server will accept it:
+    producer.enqueue(job2).unwrap();
+
+    let had_job = consumer.run_one(0, &[queue_name]).unwrap();
+    assert!(had_job);
+    let had_another_one = consumer.run_one(0, &[queue_name]).unwrap();
+    assert!(had_another_one);
+
+    // and the queue is empty again:
+    let had_job = consumer.run_one(0, &[queue_name]).unwrap();
     assert!(!had_job);
 }
