@@ -4,6 +4,7 @@ extern crate url;
 
 use faktory::*;
 use serde_json::Value;
+use std::convert::TryInto;
 use std::io;
 use std::sync;
 
@@ -162,4 +163,62 @@ fn queue() {
     assert!(had_job);
     let worker_executed = rx.try_recv().is_ok();
     assert!(worker_executed);
+}
+
+#[test]
+#[cfg(feature = "ent")]
+fn expiring_job() {
+    use std::{env, thread, time};
+
+    let url = env::var_os("FAKTORY_URL").expect(
+        "Enterprise Faktory should be running for this test, and 'FAKTORY_URL' environment variable should be provided",
+    );
+    let url = url.to_str().expect("Is a utf-8 string");
+
+    // prepare a producer ("client" in Faktory terms)
+    let mut producer = Producer::connect(Some(url)).unwrap();
+
+    // prepare a consumer ("worker" in Faktory terms)
+    let mut consumer = ConsumerBuilder::default();
+    consumer.register("AnExpiringJob", move |job| -> io::Result<_> {
+        Ok(eprintln!("{:?}", job))
+    });
+    let mut consumer = consumer.connect(Some(url)).unwrap();
+
+    // prepare an expiring job
+    let job_ttl_secs: u64 = 3;
+
+    let ttl = chrono::Duration::seconds(job_ttl_secs as i64);
+    let job1 = JobBuilder::default()
+        .kind("AnExpiringJob")
+        .args(vec!["ISBN-13:9781718501850"])
+        .expires_at(chrono::Utc::now() + ttl)
+        .build()
+        .unwrap();
+
+    // enqueue and fetch immediately job1:
+    producer.enqueue(job1).unwrap();
+    let had_job = consumer.run_one(0, &["default"]).unwrap();
+    assert!(had_job);
+
+    // check that the queue is drained:
+    let had_job = consumer.run_one(0, &["default"]).unwrap();
+    assert!(!had_job);
+
+    // prepare another one:
+    let job2 = JobBuilder::default()
+        .kind("AnExpiringJob")
+        .args(vec!["ISBN-13:9781718501850"])
+        .expires_at(chrono::Utc::now() + ttl)
+        .build()
+        .unwrap();
+
+    // enquere and then fetch job2, but after ttl:
+    producer.enqueue(job2).unwrap();
+    thread::sleep(time::Duration::from_secs(job_ttl_secs * 2));
+    let had_job = consumer.run_one(0, &["default"]).unwrap();
+
+    // For the non-enterprise edition of Faktory, this assertion will
+    // fail, which should be take into account when running the test suite on CI.
+    assert!(!had_job);
 }
