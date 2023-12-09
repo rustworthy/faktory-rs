@@ -1,0 +1,37 @@
+name: Test against Enterprise Faktory
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    env:
+      FAKTORY_VERSION: 1.8.0
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: ========== PROCURE REDIS (FAKTORY DEP) ===========
+        run: brew install redis
+
+      - name: ========== PROCURE FAKTORY BINARY ================
+        run: |
+          wget -O faktory.tbz https://github.com/contribsys/faktory/releases/download/v${{ env.FAKTORY_VERSION }}/faktory-ent_${{ env.FAKTORY_VERSION }}.macos.amd64.tbz
+          tar xfv faktory.tbz
+          cp ./faktory /usr/local/bin
+
+      - name: ========== LAUNCH FAKTORY SERVER =================
+        run: faktory &
+
+      - name: ========== PROCURE RUST TOOLCHAIN (STABLE) =======
+        run: |
+          rustup set profile minimal
+          rustup toolchain install stable
+
+      - name: ========== RUN TESTS FOR "ENT" FEATURE ===========
+        env:
+          FAKTORY_URL: tcp://127.0.0.1:7419
+        run: cargo test --features ent
