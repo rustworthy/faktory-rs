@@ -29,7 +29,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --features default,tls,binaries --all-targets
+          args: --locked --all-features --all-targets
         env: # set this explicitly so integration tests will run
           FAKTORY_URL: tcp://127.0.0.1:7419
     services:
@@ -67,7 +67,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --features default,tls,binaries --all-targets
+          args: --locked --all-features --all-targets
         env:
           # set this explicitly so integration tests will run
           FAKTORY_URL: tcp://127.0.0.1:7419

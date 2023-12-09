@@ -165,6 +165,15 @@ fn queue() {
 }
 
 #[cfg(feature = "ent")]
+macro_rules! skip_if_not_enterprise {
+    () => {
+        if std::env::var_os("FAKTORY_ENT").is_none() {
+            return;
+        }
+    };
+}
+
+#[cfg(feature = "ent")]
 fn learn_faktory_url() -> String {
     let url = std::env::var_os("FAKTORY_URL").expect(
         "Enterprise Faktory should be running for this test, and 'FAKTORY_URL' environment variable should be provided",
@@ -176,6 +185,8 @@ fn learn_faktory_url() -> String {
 #[cfg(feature = "ent")]
 fn ent_expiring_job() {
     use std::{thread, time};
+
+    skip_if_not_enterprise!();
 
     let url = learn_faktory_url();
 
@@ -230,6 +241,8 @@ fn ent_expiring_job() {
 fn ent_unique_job() {
     use faktory::error;
     use serde_json::Value;
+
+    skip_if_not_enterprise!();
 
     let url = learn_faktory_url();
 
