@@ -30,7 +30,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --all-features --all-targets
+          args: --locked --features default,tls,binaries --all-targets
         env: # set this explicitly so integration tests will run
           FAKTORY_URL: tcp://127.0.0.1:7419
     services:
@@ -66,7 +66,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --all-features --all-targets
+          args: --locked --features default,tls,binaries --all-targets
         env: # set this explicitly so integration tests will run
           FAKTORY_URL: tcp://127.0.0.1:7419
     services:
@@ -100,7 +100,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --locked --all-features --all-targets
+          args: --locked --features default,tls,binaries --all-targets
   coverage:
     runs-on: ubuntu-latest
     name: ubuntu / stable / coverage
@@ -122,7 +122,7 @@ jobs:
         with:
           command: generate-lockfile
       - name: cargo llvm-cov
-        run: cargo llvm-cov --locked --all-features --lcov --output-path lcov.info
+        run: cargo llvm-cov --locked --features default,tls,binaries --lcov --output-path lcov.info
         env: # set this explicitly so integration tests will run
           FAKTORY_URL: tcp://127.0.0.1:7419
       - name: Upload to codecov.io

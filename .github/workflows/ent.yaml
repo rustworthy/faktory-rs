@@ -34,4 +34,4 @@ jobs:
       - name: ========== RUN TESTS FOR "ENT" FEATURE ===========
         env:
           FAKTORY_URL: tcp://127.0.0.1:7419
-        run: cargo test --features ent
+        run: cargo test --locked --features ent --all-targets
