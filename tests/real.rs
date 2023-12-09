@@ -4,7 +4,6 @@ extern crate url;
 
 use faktory::*;
 use serde_json::Value;
-use std::convert::TryInto;
 use std::io;
 use std::sync;
 
@@ -165,27 +164,30 @@ fn queue() {
     assert!(worker_executed);
 }
 
+#[cfg(feature = "ent")]
+fn learn_faktory_url() -> String {
+    let url = std::env::var_os("FAKTORY_URL").expect(
+        "Enterprise Faktory should be running for this test, and 'FAKTORY_URL' environment variable should be provided",
+    );
+    url.to_str().expect("Is a utf-8 string").to_owned()
+}
+
 #[test]
 #[cfg(feature = "ent")]
 fn expiring_job() {
-    use std::{env, thread, time};
+    use std::{thread, time};
 
-    let url = env::var_os("FAKTORY_URL").expect(
-        "Enterprise Faktory should be running for this test, and 'FAKTORY_URL' environment variable should be provided",
-    );
-    let url = url.to_str().expect("Is a utf-8 string");
+    let url = learn_faktory_url();
 
-    // prepare a producer ("client" in Faktory terms)
-    let mut producer = Producer::connect(Some(url)).unwrap();
-
-    // prepare a consumer ("worker" in Faktory terms)
+    // prepare a producer ("client" in Faktory terms) and consumer ("worker"):
+    let mut producer = Producer::connect(Some(&url)).unwrap();
     let mut consumer = ConsumerBuilder::default();
     consumer.register("AnExpiringJob", move |job| -> io::Result<_> {
         Ok(eprintln!("{:?}", job))
     });
-    let mut consumer = consumer.connect(Some(url)).unwrap();
+    let mut consumer = consumer.connect(Some(&url)).unwrap();
 
-    // prepare an expiring job
+    // prepare an expiring job:
     let job_ttl_secs: u64 = 3;
 
     let ttl = chrono::Duration::seconds(job_ttl_secs as i64);
