@@ -548,4 +548,79 @@ mod test {
             &serde_json::Value::from(to_iso_string(expires_at2))
         )
     }
+    #[test]
+    fn test_progress_update_needs_jid() {
+        let result = ProgressUpdateBuilder::default().build();
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "progress update is malformed: `jid` must be initialized"
+        )
+    }
+
+    #[test]
+    fn test_percent_validated_on_progress_update() {
+        let tracked = utils::gen_random_jid();
+        let result = ProgressUpdateBuilder::default()
+            .jid(tracked)
+            .percent(120)
+            .build();
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "progress update is malformed: `percent` indicates job execution progress and should be in the range from 0 to 100 inclusive"
+        )
+    }
+
+    #[test]
+    fn test_progress_update_can_be_created_with_builder() {
+        let tracked = utils::gen_random_jid();
+        let progress = ProgressUpdateBuilder::default()
+            .jid(tracked.clone())
+            .build()
+            .unwrap();
+
+        assert_eq!(progress.jid, tracked);
+        assert!(progress.desc.is_none());
+        assert!(progress.percent.is_none());
+        assert!(progress.reserve_until.is_none());
+
+        let extra_time_needed = chrono::Duration::nanoseconds(111_111_111);
+        let extend = Utc::now() + extra_time_needed;
+        let progress = ProgressUpdateBuilder::default()
+            .jid(tracked.clone())
+            .desc("Resizing the image...".to_string())
+            .percent(67)
+            .reserve_until(extend.clone())
+            .build()
+            .unwrap();
+
+        let serialized = serde_json::to_string(&progress).unwrap();
+        assert!(serialized.contains("jid"));
+        assert!(serialized.contains(&tracked));
+
+        assert!(serialized.contains("desc"));
+        assert!(serialized.contains("Resizing the image..."));
+
+        assert!(serialized.contains("percent"));
+        assert!(serialized.contains("67"));
+
+        assert!(serialized.contains("reserve_until"));
+        eprintln!("serialized: {}", serialized.clone());
+        eprintln!("date to iso: {}", to_iso_string(extend.clone()));
+        assert!(serialized.contains(&to_iso_string(extend)));
+
+        let progress = ProgressUpdateBuilder::default()
+            .jid(tracked.clone())
+            .build()
+            .unwrap();
+        let serialized = serde_json::to_string(&progress).unwrap();
+
+        assert!(serialized.contains("jid"));
+        assert!(serialized.contains(&tracked));
+
+        assert!(!serialized.contains("percent"));
+        assert!(!serialized.contains("desc"));
+        assert!(!serialized.contains("reserve_until"));
+    }
 }

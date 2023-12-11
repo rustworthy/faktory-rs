@@ -101,7 +101,7 @@ pub enum Client {
     },
 
     /// The 'Job' is malformed.
-    #[error("progress update hash is malformed: {desc}")]
+    #[error("progress update is malformed: {desc}")]
     ProgressUpdateMalformed {
         /// Details on what is missing or incorrect about an instance of 'ProgressUpdate'
         desc: String,
