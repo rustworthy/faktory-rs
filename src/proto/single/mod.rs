@@ -307,6 +307,59 @@ impl Job {
     }
 }
 
+/// Info on job execution progress.
+///
+/// In Enterprise Faktory, a client executing a job can report on the execution
+/// progress, provided the job is trackable. A trackable job is the one with "track":1
+/// specified in the custom data hash.
+#[derive(Debug, Serialize, Builder)]
+#[builder(
+    setter(into),
+    build_fn(name = "try_build", private, validate = "Self::validate")
+)]
+pub struct ProgressUpdate {
+    /// Id of the tracked job.
+    pub jid: String,
+
+    /// Percentage of the job's completion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default = "None")]
+    pub percent: Option<u8>,
+
+    /// Arbitrary description that may be useful to whoever is tracking the job's progress.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default = "None")]
+    pub desc: Option<String>,
+
+    /// Allows to extend the job's reservation, if more time needed to execute it.
+    ///
+    /// Note that you cannot decrease the initial [reservation](struct.Job.html#structfield.reserve_for).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default = "None")]
+    pub reserve_until: Option<DateTime<Utc>>,
+}
+
+impl ProgressUpdateBuilder {
+    fn validate(&self) -> Result<(), String> {
+        if let Some(ref percent) = self.percent {
+            if *percent > Some(100) {
+                return Err("`percent` indicates job execution progress and should be in the range from 0 to 100 inclusive".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    /// Builds an instance of ProgressUpdate.
+    pub fn build(&self) -> Result<ProgressUpdate, error::Client> {
+        let progress = self
+            .try_build()
+            .map_err(|err| error::Client::ProgressUpdateMalformed {
+                desc: err.to_string(),
+            })?;
+        Ok(progress)
+    }
+}
+
 pub fn write_command<W: Write, C: FaktoryCommand>(w: &mut W, command: &C) -> Result<(), Error> {
     command.issue::<W>(w)?;
     Ok(w.flush()?)
@@ -503,5 +556,80 @@ mod test {
             stored_expires_at,
             &serde_json::Value::from(to_iso_string(expires_at2))
         )
+    }
+    #[test]
+    fn test_progress_update_needs_jid() {
+        let result = ProgressUpdateBuilder::default().build();
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "progress update is malformed: `jid` must be initialized"
+        )
+    }
+
+    #[test]
+    fn test_percent_validated_on_progress_update() {
+        let tracked = utils::gen_random_jid();
+        let result = ProgressUpdateBuilder::default()
+            .jid(tracked)
+            .percent(120)
+            .build();
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "progress update is malformed: `percent` indicates job execution progress and should be in the range from 0 to 100 inclusive"
+        )
+    }
+
+    #[test]
+    fn test_progress_update_can_be_created_with_builder() {
+        let tracked = utils::gen_random_jid();
+        let progress = ProgressUpdateBuilder::default()
+            .jid(tracked.clone())
+            .build()
+            .unwrap();
+
+        assert_eq!(progress.jid, tracked);
+        assert!(progress.desc.is_none());
+        assert!(progress.percent.is_none());
+        assert!(progress.reserve_until.is_none());
+
+        let extra_time_needed = chrono::Duration::nanoseconds(111_111_111);
+        let extend = Utc::now() + extra_time_needed;
+        let progress = ProgressUpdateBuilder::default()
+            .jid(tracked.clone())
+            .desc("Resizing the image...".to_string())
+            .percent(67)
+            .reserve_until(extend.clone())
+            .build()
+            .unwrap();
+
+        let serialized = serde_json::to_string(&progress).unwrap();
+        assert!(serialized.contains("jid"));
+        assert!(serialized.contains(&tracked));
+
+        assert!(serialized.contains("desc"));
+        assert!(serialized.contains("Resizing the image..."));
+
+        assert!(serialized.contains("percent"));
+        assert!(serialized.contains("67"));
+
+        assert!(serialized.contains("reserve_until"));
+        eprintln!("serialized: {}", serialized.clone());
+        eprintln!("date to iso: {}", to_iso_string(extend.clone()));
+        assert!(serialized.contains(&to_iso_string(extend)));
+
+        let progress = ProgressUpdateBuilder::default()
+            .jid(tracked.clone())
+            .build()
+            .unwrap();
+        let serialized = serde_json::to_string(&progress).unwrap();
+
+        assert!(serialized.contains("jid"));
+        assert!(serialized.contains(&tracked));
+
+        assert!(!serialized.contains("percent"));
+        assert!(!serialized.contains("desc"));
+        assert!(!serialized.contains("reserve_until"));
     }
 }
