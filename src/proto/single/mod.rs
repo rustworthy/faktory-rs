@@ -350,7 +350,7 @@ impl ProgressUpdateBuilder {
     }
 
     /// Builds an instance of ProgressUpdate.
-    pub fn build(&self) -> Result<ProgressUpdate, error::Client> {
+    pub fn build(&self) -> Result<ProgressUpdate, Error> {
         let progress = self
             .try_build()
             .map_err(|err| error::Client::ProgressUpdateMalformed {
@@ -560,11 +560,15 @@ mod test {
     #[test]
     fn test_progress_update_needs_jid() {
         let result = ProgressUpdateBuilder::default().build();
-        let err = result.unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "progress update is malformed: `jid` must be initialized"
-        )
+
+        if let Error::Client(e) = result.unwrap_err() {
+            assert_eq!(
+                e.to_string(),
+                "progress update is malformed: `jid` must be initialized"
+            )
+        } else {
+            unreachable!();
+        }
     }
 
     #[test]
@@ -574,11 +578,14 @@ mod test {
             .jid(tracked)
             .percent(120)
             .build();
-        let err = result.unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "progress update is malformed: `percent` indicates job execution progress and should be in the range from 0 to 100 inclusive"
-        )
+        if let Error::Client(e) = result.unwrap_err() {
+            assert_eq!(
+                e.to_string(),
+                "progress update is malformed: `percent` indicates job execution progress and should be in the range from 0 to 100 inclusive"
+            )
+        } else {
+            unreachable!();
+        }
     }
 
     #[test]
