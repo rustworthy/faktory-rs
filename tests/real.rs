@@ -520,6 +520,8 @@ fn test_tracker_can_send_progress_update() {
         .args(vec![Value::from("ISBN-13:9781718501850")])
         .kind("order")
         .queue("test_tracker_can_send_progress_update")
+        // Tracked jobs must have a custom attribute of "track":1
+        .add_to_custom_data("track".into(), 1)
         .build()
         .expect("job built successfully");
 
