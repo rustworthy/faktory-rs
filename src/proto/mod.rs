@@ -10,6 +10,7 @@ pub(crate) const EXPECTED_PROTOCOL_VERSION: usize = 2;
 
 mod single;
 
+use self::single::Hello;
 // commands that users can issue
 pub use self::single::{
     Ack, Fail, Heartbeat, Info, Job, JobBuilder, Push, QueueAction, QueueControl,
@@ -48,6 +49,43 @@ pub(crate) fn url_parse(url: &str) -> Result<Url, Error> {
 
 pub(crate) fn learn_url(url: Option<&str>) -> Result<Url, Error> {
     url_parse(url.unwrap_or(&get_env_url()))
+}
+
+fn check_protocols_match(ver: usize) -> Result<(), Error> {
+    if ver != EXPECTED_PROTOCOL_VERSION {
+        return Err(error::Connect::VersionMismatch {
+            ours: EXPECTED_PROTOCOL_VERSION,
+            theirs: ver,
+        }
+        .into());
+    }
+    Ok(())
+}
+
+fn complete_worker_opts(opts: &mut ClientOptions) -> &mut ClientOptions {
+    opts.hostname = Some(
+        opts.hostname
+            .clone()
+            .or_else(|| hostname::get().ok()?.into_string().ok())
+            .unwrap_or_else(|| "local".to_string()),
+    );
+    opts.pid = Some(opts.pid.unwrap_or_else(|| unsafe { getpid() } as usize));
+    opts.wid = Some(opts.wid.clone().unwrap_or_else(|| {
+        use rand::{thread_rng, Rng};
+        thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .map(char::from)
+            .take(32)
+            .collect()
+    }));
+    opts
+}
+
+fn complete_worker_hello(hello: &mut Hello, opts: &ClientOptions) {
+    hello.hostname = Some(opts.hostname.clone().unwrap());
+    hello.pid = Some(opts.pid.unwrap());
+    hello.wid = Some(opts.wid.clone().unwrap());
+    hello.labels = opts.labels.clone();
 }
 
 /// A stream that can be re-established after failing.
@@ -149,7 +187,7 @@ impl<S: Read + Write> Client<S> {
             stream: BufStream::new(stream),
             opts,
         };
-        c.init()?;
+        c.init_tracker()?;
         Ok(c)
     }
 }
@@ -158,45 +196,30 @@ impl<S: Read + Write> Client<S> {
     fn init(&mut self) -> Result<(), Error> {
         let hi = single::read_hi(&mut self.stream)?;
 
-        if hi.version != EXPECTED_PROTOCOL_VERSION {
-            return Err(error::Connect::VersionMismatch {
-                ours: EXPECTED_PROTOCOL_VERSION,
-                theirs: hi.version,
-            }
-            .into());
-        }
+        check_protocols_match(hi.version)?;
 
-        // fill in any missing options, and remember them for re-connect
         let mut hello = single::Hello::default();
+        if hi.salt.is_some() {
+            if let Some(ref pwd) = self.opts.password {
+                hello.set_password(&hi, pwd);
+            } else {
+                return Err(error::Connect::AuthenticationNeeded.into());
+            }
+        }
         if !self.opts.is_producer {
-            let hostname = self
-                .opts
-                .hostname
-                .clone()
-                .or_else(|| hostname::get().ok()?.into_string().ok())
-                .unwrap_or_else(|| "local".to_string());
-            self.opts.hostname = Some(hostname);
-            let pid = self
-                .opts
-                .pid
-                .unwrap_or_else(|| unsafe { getpid() } as usize);
-            self.opts.pid = Some(pid);
-            let wid = self.opts.wid.clone().unwrap_or_else(|| {
-                use rand::{thread_rng, Rng};
-                thread_rng()
-                    .sample_iter(&rand::distributions::Alphanumeric)
-                    .map(char::from)
-                    .take(32)
-                    .collect()
-            });
-            self.opts.wid = Some(wid);
-
-            hello.hostname = Some(self.opts.hostname.clone().unwrap());
-            hello.wid = Some(self.opts.wid.clone().unwrap());
-            hello.pid = Some(self.opts.pid.unwrap());
-            hello.labels = self.opts.labels.clone();
+            complete_worker_opts(&mut self.opts);
+            complete_worker_hello(&mut hello, &self.opts);
         }
 
+        single::write_command_and_await_ok(&mut self.stream, &hello)
+    }
+
+    fn init_tracker(&mut self) -> Result<(), Error> {
+        let hi = single::read_hi(&mut self.stream)?;
+
+        check_protocols_match(hi.version)?;
+
+        let mut hello = single::Hello::default();
         if hi.salt.is_some() {
             if let Some(ref pwd) = self.opts.password {
                 hello.set_password(&hi, pwd);
