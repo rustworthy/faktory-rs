@@ -1,5 +1,7 @@
+use crate::ProgressUpdate;
 use crate::{error::Error, Job};
 
+use std::fmt::Debug;
 use std::io::prelude::*;
 
 pub trait FaktoryCommand {
@@ -274,5 +276,33 @@ impl<S: AsRef<str>> FaktoryCommand for QueueControl<'_, S> {
 impl<'a, S: AsRef<str>> QueueControl<'a, S> {
     pub fn new(action: QueueAction, queues: &'a [S]) -> Self {
         Self { action, queues }
+    }
+}
+
+// ----------------------------------------------
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub enum Track<S: AsRef<str>> {
+    Set(ProgressUpdate),
+    Get(S),
+}
+
+impl<S> FaktoryCommand for Track<S>
+where
+    S: AsRef<str>,
+{
+    fn issue<W: Write>(&self, w: &mut dyn Write) -> Result<(), Error> {
+        match self {
+            Self::Set(upd) => {
+                w.write_all(b"TRACK SET ")?;
+                serde_json::to_writer(&mut *w, upd).map_err(Error::Serialization)?;
+                Ok(w.write_all(b"\r\n")?)
+            }
+            Self::Get(jid) => {
+                w.write_all(b"TRACK GET ")?;
+                w.write_all(jid.as_ref().as_bytes())?;
+                Ok(w.write_all(b"\r\n")?)
+            }
+        }
     }
 }
