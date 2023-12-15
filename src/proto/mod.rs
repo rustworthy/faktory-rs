@@ -13,11 +13,13 @@ mod single;
 use self::single::Hello;
 // commands that users can issue
 pub use self::single::{
-    Ack, Fail, Heartbeat, Info, Job, JobBuilder, Push, QueueAction, QueueControl,
+    Ack, Fail, Heartbeat, Info, Job, JobBuilder, Push, QueueAction, QueueControl, Track,
 };
 
 // responses that users can see
 pub use self::single::Hi;
+
+pub use self::single::gen_random_jid;
 
 pub use self::single::{Progress, ProgressUpdate, ProgressUpdateBuilder};
 

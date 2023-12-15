@@ -4,8 +4,7 @@ extern crate url;
 
 use faktory::*;
 use serde_json::Value;
-use std::io;
-use std::sync;
+use std::{env, io, sync, thread, time};
 
 macro_rules! skip_check {
     () => {
@@ -508,4 +507,67 @@ fn ent_unique_job_until_start() {
         .is_ok());
 
     handle.join().expect("should join successfully");
+}
+
+#[test]
+fn test_tracker_can_send_progress_update() {
+    if env::var_os("FAKTORY_URL").is_none() || env::var_os("FAKTORY_ENT").is_none() {
+        return;
+    }
+
+    let mut producer = Producer::connect(None).unwrap();
+    let job = JobBuilder::default()
+        .args(vec![Value::from("ISBN-13:9781718501850")])
+        .kind("order")
+        .queue("test_tracker_can_send_progress_update")
+        .build()
+        .expect("job built successfully");
+
+    // let's remember this job's id:
+    let job_id = job.id().to_owned();
+    let job_id_to_clone = job_id.clone();
+
+    producer.enqueue(job).expect("enqueued successfully");
+
+    let mut consumer_a = ConsumerBuilder::default();
+    consumer_a.register("order", move |job| -> io::Result<_> {
+        let mut tracker = Tracker::new(None).expect("job progress reader created successfully");
+        // trying to set progress on a community edition of Faktory will give:
+        // 'an internal server error occurred: tracking subsystem is only available in Faktory Enterprise'
+        let result = tracker.set_progress(
+            ProgressUpdateBuilder::default()
+                .jid(job_id_to_clone.clone())
+                .desc("I am still reading it...".to_owned())
+                .percent(32)
+                .build()
+                .unwrap(),
+        );
+        assert!(result.is_ok());
+        // let's sleep for a while ...
+        thread::sleep(time::Duration::from_secs(2));
+
+        // ... and read the progress info
+        let result = tracker
+            .get_progress(job_id_to_clone.clone())
+            .expect("Retrieved progress update over the wire");
+        assert!(result.is_some());
+        let result = result.unwrap();
+        assert_eq!(result.jid, job_id_to_clone.clone());
+        assert_eq!(result.state, "working");
+        // assert!(result.updated_at) make some reasonable assertion here
+        assert_eq!(result.desc, Some("I am still reading it...".to_owned()));
+        assert_eq!(result.percent, Some(32));
+
+        // considering the job done
+        Ok(eprintln!("{:?}", job))
+    });
+
+    let mut consumer = consumer_a
+        .connect(None)
+        .expect("Successfully ran a handshake with 'Faktory'");
+    let had_one_job = consumer
+        .run_one(0, &["test_tracker_can_send_progress_update"])
+        .expect("really had one");
+
+    assert!(had_one_job);
 }

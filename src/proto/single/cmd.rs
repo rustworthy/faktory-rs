@@ -280,17 +280,14 @@ impl<'a, S: AsRef<str>> QueueControl<'a, S> {
 }
 
 // ----------------------------------------------
-#[allow(dead_code)]
+
 #[derive(Debug, Clone)]
-pub enum Track<S: AsRef<str>> {
+pub enum Track {
     Set(ProgressUpdate),
-    Get(S),
+    Get(String),
 }
 
-impl<S> FaktoryCommand for Track<S>
-where
-    S: AsRef<str>,
-{
+impl FaktoryCommand for Track {
     fn issue<W: Write>(&self, w: &mut dyn Write) -> Result<(), Error> {
         match self {
             Self::Set(upd) => {
@@ -300,7 +297,7 @@ where
             }
             Self::Get(jid) => {
                 w.write_all(b"TRACK GET ")?;
-                w.write_all(jid.as_ref().as_bytes())?;
+                w.write_all(jid.as_bytes())?;
                 Ok(w.write_all(b"\r\n")?)
             }
         }
