@@ -307,12 +307,39 @@ impl Job {
     }
 }
 
-/// Info on job execution progress.
+/// Info on job execution progress (retrieved).
+///
+/// The tracker is guaranteed to get the following details: the job's id (though
+/// they should know it beforehand in order to be ably to track the job), its last
+/// know state (e.g."enqueued", "working", "success", "unknown") and the date and time
+/// the job was last updated. Additionally, information on what's going on with the job
+/// ([desc](struct.ProgressUpdate.html#structfield.desc)) and completion percentage
+/// ([percent](struct.ProgressUpdate.html#structfield.percent)) may be available,
+/// if the worker provided those details.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Progress {
+    /// Id of the tracked job.
+    pub jid: String,
+
+    /// Job's state.
+    pub state: String,
+
+    /// When this job was last updated.
+    pub updated_at: DateTime<Utc>,
+
+    /// Percentage of the job's completion.
+    pub percent: Option<u8>,
+
+    /// Arbitrary description that may be useful to whoever is tracking the job's progress.
+    pub desc: Option<String>,
+}
+
+/// Info on job execution progress (sent).
 ///
 /// In Enterprise Faktory, a client executing a job can report on the execution
 /// progress, provided the job is trackable. A trackable job is the one with "track":1
 /// specified in the custom data hash.
-#[derive(Debug, Serialize, Builder)]
+#[derive(Debug, Clone, Serialize, Builder)]
 #[builder(
     setter(into),
     build_fn(name = "try_build", private, validate = "Self::validate")
@@ -612,6 +639,7 @@ mod test {
             .unwrap();
 
         let serialized = serde_json::to_string(&progress).unwrap();
+        println!("{}", serialized);
         assert!(serialized.contains("jid"));
         assert!(serialized.contains(&tracked));
 
@@ -638,5 +666,44 @@ mod test {
         assert!(!serialized.contains("percent"));
         assert!(!serialized.contains("desc"));
         assert!(!serialized.contains("reserve_until"));
+    }
+
+    #[test]
+    fn test_progress_deserialized_correctly() {
+        let raw = b"
+        {
+            \"jid\":\"W8qyVle9vXzUWQOf\",
+            \"updated_at\":\"2023-12-13T21:01:35.244381344Z\",
+            \"state\":\"working\",
+            \"desc\":\"Resizing the image...\",
+            \"percent\":88
+        }";
+
+        let progress = serde_json::from_slice::<Progress>(raw).unwrap();
+        assert_eq!(progress.jid, "W8qyVle9vXzUWQOf");
+        assert_eq!(
+            progress.updated_at,
+            DateTime::parse_from_rfc3339("2023-12-13T21:01:35.244381344Z").unwrap()
+        );
+        assert_eq!(progress.state, "working");
+        assert_eq!(progress.desc, Some("Resizing the image...".into()));
+        assert_eq!(progress.percent, Some(88));
+
+        let raw = b"
+        {
+            \"jid\":\"44124a8gs87722qaa\",
+            \"updated_at\":\"1970-12-13T06:52:27.765011869Z\",
+            \"state\":\"unknown\"
+        }";
+
+        let progress = serde_json::from_slice::<Progress>(raw).unwrap();
+        assert_eq!(progress.jid, "44124a8gs87722qaa");
+        assert_eq!(
+            progress.updated_at,
+            DateTime::parse_from_rfc3339("1970-12-13T06:52:27.765011869Z").unwrap()
+        );
+        assert_eq!(progress.state, "unknown");
+        assert_eq!(progress.desc, None);
+        assert_eq!(progress.percent, None);
     }
 }

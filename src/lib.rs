@@ -74,4 +74,6 @@ pub use crate::consumer::{Consumer, ConsumerBuilder};
 pub use crate::error::Error;
 pub use crate::producer::Producer;
 pub use crate::proto::Reconnect;
-pub use crate::proto::{Job, JobBuilder, ProgressUpdate, ProgressUpdateBuilder};
+
+pub use crate::proto::{Job, JobBuilder};
+pub use crate::proto::{Progress, ProgressUpdate, ProgressUpdateBuilder};

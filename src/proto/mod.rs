@@ -12,12 +12,13 @@ mod single;
 
 // commands that users can issue
 pub use self::single::{
-    Ack, Fail, Heartbeat, Info, Job, JobBuilder, ProgressUpdate, ProgressUpdateBuilder, Push,
-    QueueAction, QueueControl,
+    Ack, Fail, Heartbeat, Info, Job, JobBuilder, Push, QueueAction, QueueControl,
 };
 
 // responses that users can see
 pub use self::single::Hi;
+
+pub use self::single::{Progress, ProgressUpdate, ProgressUpdateBuilder};
 
 pub(crate) fn get_env_url() -> String {
     use std::env;
