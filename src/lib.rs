@@ -77,3 +77,6 @@ pub use crate::proto::Reconnect;
 
 pub use crate::proto::{Job, JobBuilder};
 pub use crate::proto::{Progress, ProgressUpdate, ProgressUpdateBuilder};
+
+mod tracker;
+pub use crate::tracker::Tracker;

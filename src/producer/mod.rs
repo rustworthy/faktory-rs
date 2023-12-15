@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::proto::{self, Client, Info, Job, Push, QueueAction, QueueControl};
+use crate::proto::{self, learn_url, Client, Info, Job, Push, QueueAction, QueueControl};
 use std::io::prelude::*;
 use std::net::TcpStream;
 
@@ -82,10 +82,7 @@ impl Producer<TcpStream> {
     ///
     /// If `url` is given, but does not specify a port, it defaults to 7419.
     pub fn connect(url: Option<&str>) -> Result<Self, Error> {
-        let url = match url {
-            Some(url) => proto::url_parse(url),
-            None => proto::url_parse(&proto::get_env_url()),
-        }?;
+        let url = learn_url(url)?;
         let stream = TcpStream::connect(proto::host_from_url(&url))?;
         Self::connect_with(stream, url.password().map(|p| p.to_string()))
     }

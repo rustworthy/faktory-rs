@@ -46,6 +46,10 @@ pub(crate) fn url_parse(url: &str) -> Result<Url, Error> {
     Ok(url)
 }
 
+pub(crate) fn learn_url(url: Option<&str>) -> Result<Url, Error> {
+    url_parse(url.unwrap_or(&get_env_url()))
+}
+
 /// A stream that can be re-established after failing.
 pub trait Reconnect: Sized {
     /// Re-establish the stream.
