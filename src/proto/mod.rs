@@ -139,6 +139,19 @@ impl<S: Read + Write> Client<S> {
         };
         Self::new(stream, opts)
     }
+
+    pub(crate) fn new_tracker(stream: S, pwd: Option<String>) -> Result<Client<S>, Error> {
+        let opts = ClientOptions {
+            password: pwd,
+            ..Default::default()
+        };
+        let mut c = Client {
+            stream: BufStream::new(stream),
+            opts,
+        };
+        c.init()?;
+        Ok(c)
+    }
 }
 
 impl<S: Read + Write> Client<S> {
