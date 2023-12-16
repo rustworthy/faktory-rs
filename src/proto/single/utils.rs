@@ -1,5 +1,11 @@
 use rand::{thread_rng, Rng};
 
+use chrono::{DateTime, Utc};
+use serde::{
+    de::{Deserializer, IntoDeserializer},
+    Deserialize,
+};
+
 const JOB_ID_LENGTH: usize = 16;
 
 pub fn gen_random_jid() -> String {
@@ -8,6 +14,21 @@ pub fn gen_random_jid() -> String {
         .map(char::from)
         .take(JOB_ID_LENGTH)
         .collect()
+}
+
+// Used to parse responses from Faktory that look like this:
+// '{"jid":"f7APFzrS2RZi9eaA","state":"unknown","updated_at":""}'
+pub fn parse_datetime<'de, D>(value: D) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match Option::<String>::deserialize(value)?
+        .as_ref()
+        .map(String::as_str)
+    {
+        Some("") | None => Ok(None),
+        Some(non_empty) => DateTime::deserialize(non_empty.into_deserializer()).map(Some),
+    }
 }
 
 #[cfg(test)]

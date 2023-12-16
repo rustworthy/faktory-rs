@@ -11,7 +11,7 @@ use crate::error::{self, Error};
 
 pub use self::cmd::*;
 pub use self::resp::*;
-pub use self::utils::gen_random_jid;
+pub use self::utils::{gen_random_jid, parse_datetime};
 
 const JOB_DEFAULT_QUEUE: &str = "default";
 const JOB_DEFAULT_RESERVED_FOR_SECS: usize = 600;
@@ -334,7 +334,8 @@ pub struct Progress {
     pub state: String,
 
     /// When this job was last updated.
-    pub updated_at: DateTime<Utc>,
+    #[serde(deserialize_with = "parse_datetime")]
+    pub updated_at: Option<DateTime<Utc>>,
 
     /// Percentage of the job's completion.
     pub percent: Option<u8>,
@@ -692,7 +693,11 @@ mod test {
         assert_eq!(progress.jid, "W8qyVle9vXzUWQOf");
         assert_eq!(
             progress.updated_at,
-            DateTime::parse_from_rfc3339("2023-12-13T21:01:35.244381344Z").unwrap()
+            Some(
+                DateTime::parse_from_rfc3339("2023-12-13T21:01:35.244381344Z")
+                    .unwrap()
+                    .into()
+            )
         );
         assert_eq!(progress.state, "working");
         assert_eq!(progress.desc, Some("Resizing the image...".into()));
@@ -709,10 +714,47 @@ mod test {
         assert_eq!(progress.jid, "44124a8gs87722qaa");
         assert_eq!(
             progress.updated_at,
-            DateTime::parse_from_rfc3339("1970-12-13T06:52:27.765011869Z").unwrap()
+            Some(
+                DateTime::parse_from_rfc3339("1970-12-13T06:52:27.765011869Z")
+                    .unwrap()
+                    .into()
+            )
         );
         assert_eq!(progress.state, "unknown");
         assert_eq!(progress.desc, None);
         assert_eq!(progress.percent, None);
+
+        // empty string for 'updated_at' is fine:
+        let raw = b"
+        {
+            \"jid\":\"44124a8gs87722qaa\",
+            \"updated_at\":\"\",
+            \"state\":\"unknown\"
+        }";
+        let progress = serde_json::from_slice::<Progress>(raw).unwrap();
+        assert_eq!(progress.jid, "44124a8gs87722qaa");
+        assert_eq!(progress.state, "unknown");
+        assert_eq!(progress.updated_at, None);
+
+        // but the field cannot be missing:
+        let raw = b"
+        {
+            \"jid\":\"44124a8gs87722qaa\",
+            \"state\":\"unknown\"
+        }";
+        let error = serde_json::from_slice::<Progress>(raw).unwrap_err();
+        assert!(error.to_string().contains("missing field `updated_at`"));
+
+        // neither can it be anything else rather than string:
+        let raw = b"
+        {
+            \"jid\":\"44124a8gs87722qaa\",
+            \"updated_at\":1,
+            \"state\":\"unknown\"
+        }";
+        let error = serde_json::from_slice::<Progress>(raw).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("invalid type: integer `1`, expected a string"));
     }
 }

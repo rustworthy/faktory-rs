@@ -5,7 +5,6 @@ extern crate url;
 use faktory::*;
 use serde_json::Value;
 use std::{
-    borrow::BorrowMut,
     env, io,
     sync::{self, Arc, Mutex},
     thread, time,
@@ -579,7 +578,7 @@ fn test_tracker_can_send_progress_update() {
         let result = result.unwrap();
         assert_eq!(result.jid, job_id_captured.clone());
         assert_eq!(result.state, "working");
-        // assert!(result.updated_at) make some reasonable assertion here
+        assert!(result.updated_at.is_some());
         assert_eq!(result.desc, Some("I am still reading it...".to_owned()));
         assert_eq!(result.percent, Some(32));
 
@@ -634,5 +633,10 @@ fn test_tracker_can_send_progress_update() {
     //    The job was not tagged with the track variable in the job's custom attributes: custom:{"track":1}.
     //    The job's tracking structure has expired in Redis. It lives for 30 minutes and a big queue backlog can lead to expiration.
     assert_eq!(result.jid, job_id);
-    assert_eq!(result.state, "unknown")
+
+    // Returned from Faktory: '{"jid":"f7APFzrS2RZi9eaA","state":"unknown","updated_at":""}'
+    assert_eq!(result.state, "unknown");
+    assert!(result.updated_at.is_none());
+    assert!(result.percent.is_none());
+    assert!(result.desc.is_none());
 }
