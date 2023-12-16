@@ -218,6 +218,14 @@ impl JobBuilder {
         self.add_to_custom_data("unique_until".into(), "success")
     }
 
+    /// Specify that this job is trackable.
+    ///
+    /// Progress update can be sent and received only for the jobs that have
+    /// been explicitly marked as trackable.
+    pub fn trackable(&mut self) -> &mut Self {
+        self.add_to_custom_data("track".into(), 1)
+    }
+
     fn validate(&self) -> Result<(), String> {
         if let Some(ref priority) = self.priority {
             if *priority > Some(JOB_PRIORITY_MAX) {

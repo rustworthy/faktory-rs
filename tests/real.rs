@@ -521,25 +521,33 @@ fn test_tracker_can_send_progress_update() {
     }
 
     let tracker = Arc::new(Mutex::new(
-        Tracker::new(None).expect("job progress reader created successfully"),
+        Tracker::new(None).expect("job progress tracker created successfully"),
     ));
     let tracker_captured = Arc::clone(&tracker);
 
     let mut producer = Producer::connect(None).unwrap();
-    let job = JobBuilder::default()
+    let job_tackable = JobBuilder::default()
         .args(vec![Value::from("ISBN-13:9781718501850")])
         .kind("order")
         .queue("test_tracker_can_send_progress_update")
-        // Tracked jobs must have a custom attribute of "track":1
-        .add_to_custom_data("track".into(), 1)
+        .trackable() // NB!
+        .build()
+        .expect("job built successfully");
+
+    let job_ordinary = JobBuilder::default()
+        .args(vec![Value::from("ISBN-13:9781718501850")])
+        .kind("order")
+        .queue("test_tracker_can_send_progress_update")
         .build()
         .expect("job built successfully");
 
     // let's remember this job's id:
-    let job_id = job.id().to_owned();
+    let job_id = job_tackable.id().to_owned();
     let job_id_captured = job_id.clone();
 
-    producer.enqueue(job).expect("enqueued successfully");
+    producer
+        .enqueue(job_tackable)
+        .expect("enqueued successfully");
 
     let mut consumer = ConsumerBuilder::default();
     consumer.register("order", move |job| -> io::Result<_> {
@@ -603,4 +611,28 @@ fn test_tracker_can_send_progress_update() {
     // But it actually knows the job's real status, since the consumer (worker)
     // informed it immediately after finishing with the job:
     assert_eq!(result.state, "success");
+
+    // What about 'ordinary' job ?
+    let job_id = job_ordinary.id().to_owned().clone();
+
+    // Sending it ...
+    producer
+        .enqueue(job_ordinary)
+        .expect("Successfuly send to Faktory");
+
+    // ... and asking for its progress
+    let result = tracker
+        .lock()
+        .expect("lock acquired successfully")
+        .get_progress(job_id.clone())
+        .expect("Retrieved progress update over the wire once again")
+        .expect("Some progress");
+
+    // From the docs:
+    // There are several reasons why a job's state might be unknown:
+    //    The JID is invalid or was never actually enqueued.
+    //    The job was not tagged with the track variable in the job's custom attributes: custom:{"track":1}.
+    //    The job's tracking structure has expired in Redis. It lives for 30 minutes and a big queue backlog can lead to expiration.
+    assert_eq!(result.jid, job_id);
+    assert_eq!(result.state, "unknown")
 }
