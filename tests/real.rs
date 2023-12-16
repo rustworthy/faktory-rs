@@ -4,7 +4,12 @@ extern crate url;
 
 use faktory::*;
 use serde_json::Value;
-use std::{env, io, sync, thread, time};
+use std::{
+    borrow::BorrowMut,
+    env, io,
+    sync::{self, Arc, Mutex},
+    thread, time,
+};
 
 macro_rules! skip_check {
     () => {
@@ -515,6 +520,11 @@ fn test_tracker_can_send_progress_update() {
         return;
     }
 
+    let tracker = Arc::new(Mutex::new(
+        Tracker::new(None).expect("job progress reader created successfully"),
+    ));
+    let tracker_captured = Arc::clone(&tracker);
+
     let mut producer = Producer::connect(None).unwrap();
     let job = JobBuilder::default()
         .args(vec![Value::from("ISBN-13:9781718501850")])
@@ -527,34 +537,39 @@ fn test_tracker_can_send_progress_update() {
 
     // let's remember this job's id:
     let job_id = job.id().to_owned();
-    let job_id_to_clone = job_id.clone();
+    let job_id_captured = job_id.clone();
 
     producer.enqueue(job).expect("enqueued successfully");
 
-    let mut consumer_a = ConsumerBuilder::default();
-    consumer_a.register("order", move |job| -> io::Result<_> {
-        let mut tracker = Tracker::new(None).expect("job progress reader created successfully");
+    let mut consumer = ConsumerBuilder::default();
+    consumer.register("order", move |job| -> io::Result<_> {
         // trying to set progress on a community edition of Faktory will give:
         // 'an internal server error occurred: tracking subsystem is only available in Faktory Enterprise'
-        let result = tracker.set_progress(
-            ProgressUpdateBuilder::default()
-                .jid(job_id_to_clone.clone())
-                .desc("I am still reading it...".to_owned())
-                .percent(32)
-                .build()
-                .unwrap(),
-        );
+        let result = tracker_captured
+            .lock()
+            .expect("lock acquired successfully")
+            .set_progress(
+                ProgressUpdateBuilder::default()
+                    .jid(job_id_captured.clone())
+                    .desc("I am still reading it...".to_owned())
+                    .percent(32)
+                    .build()
+                    .unwrap(),
+            );
         assert!(result.is_ok());
         // let's sleep for a while ...
         thread::sleep(time::Duration::from_secs(2));
 
         // ... and read the progress info
-        let result = tracker
-            .get_progress(job_id_to_clone.clone())
+        let result = tracker_captured
+            .lock()
+            .expect("lock acquired successfully")
+            .get_progress(job_id_captured.clone())
             .expect("Retrieved progress update over the wire");
+
         assert!(result.is_some());
         let result = result.unwrap();
-        assert_eq!(result.jid, job_id_to_clone.clone());
+        assert_eq!(result.jid, job_id_captured.clone());
         assert_eq!(result.state, "working");
         // assert!(result.updated_at) make some reasonable assertion here
         assert_eq!(result.desc, Some("I am still reading it...".to_owned()));
@@ -564,7 +579,7 @@ fn test_tracker_can_send_progress_update() {
         Ok(eprintln!("{:?}", job))
     });
 
-    let mut consumer = consumer_a
+    let mut consumer = consumer
         .connect(None)
         .expect("Successfully ran a handshake with 'Faktory'");
     let had_one_job = consumer
@@ -572,4 +587,20 @@ fn test_tracker_can_send_progress_update() {
         .expect("really had one");
 
     assert!(had_one_job);
+
+    let result = tracker
+        .lock()
+        .expect("lock acquired successfully")
+        .get_progress(job_id.clone())
+        .expect("Retrieved progress update over the wire once again")
+        .expect("Some progress");
+
+    assert_eq!(result.jid, job_id);
+    // 'Faktory' will be keeping last known update for at least 30 minutes:
+    assert_eq!(result.desc, Some("I am still reading it...".to_owned()));
+    assert_eq!(result.percent, Some(32));
+
+    // But it actually knows the job's real status, since the consumer (worker)
+    // informed it immediately after finishing with the job:
+    assert_eq!(result.state, "success");
 }
