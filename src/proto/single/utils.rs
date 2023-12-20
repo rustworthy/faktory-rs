@@ -22,10 +22,7 @@ pub fn parse_datetime<'de, D>(value: D) -> Result<Option<DateTime<Utc>>, D::Erro
 where
     D: Deserializer<'de>,
 {
-    match Option::<String>::deserialize(value)?
-        .as_ref()
-        .map(String::as_str)
-    {
+    match Option::<String>::deserialize(value)?.as_deref() {
         Some("") | None => Ok(None),
         Some(non_empty) => DateTime::deserialize(non_empty.into_deserializer()).map(Some),
     }
