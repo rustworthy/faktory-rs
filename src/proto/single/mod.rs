@@ -411,32 +411,24 @@ mod test {
     fn test_expiration_feature_for_enterprise_faktory() {
         let five_min = chrono::Duration::seconds(300);
         let exp_at = Utc::now() + five_min;
-        let job1 = half_stuff().expires_at(exp_at).build().unwrap();
+        let job1 = half_stuff().expires_at(exp_at).build();
         let stored = job1.custom.get("expires_at").unwrap();
         assert_eq!(stored, &serde_json::Value::from(to_iso_string(exp_at)));
 
-        let job2 = half_stuff().expires_in(five_min).build().unwrap();
+        let job2 = half_stuff().expires_in(five_min).build();
         assert!(job2.custom.get("expires_at").is_some());
     }
 
     #[test]
     #[cfg(feature = "ent")]
     fn test_uniqueness_faeture_for_enterprise_faktory() {
-        let job = half_stuff()
-            .unique_for(60)
-            .unique_until_start()
-            .build()
-            .unwrap();
+        let job = half_stuff().unique_for(60).unique_until_start().build();
         let stored_unique_for = job.custom.get("unique_for").unwrap();
         let stored_unique_until = job.custom.get("unique_until").unwrap();
         assert_eq!(stored_unique_for, &serde_json::Value::from(60));
         assert_eq!(stored_unique_until, &serde_json::Value::from("start"));
 
-        let job = half_stuff()
-            .unique_for(60)
-            .unique_until_success()
-            .build()
-            .unwrap();
+        let job = half_stuff().unique_for(60).unique_until_success().build();
 
         let stored_unique_until = job.custom.get("unique_until").unwrap();
         assert_eq!(stored_unique_until, &serde_json::Value::from("success"));
@@ -453,8 +445,7 @@ mod test {
             .unique_for(40)
             .add_to_custom_data("expires_at".into(), to_iso_string(expires_at1))
             .expires_at(expires_at2)
-            .build()
-            .unwrap();
+            .build();
         let stored_unique_for = job.custom.get("unique_for").unwrap();
         assert_eq!(stored_unique_for, &serde_json::Value::from(40));
         let stored_expires_at = job.custom.get("expires_at").unwrap();
