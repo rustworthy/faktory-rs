@@ -7,7 +7,7 @@ mod cmd;
 mod resp;
 mod utils;
 
-use crate::error::{self, Error};
+use crate::error::Error;
 
 pub use self::cmd::*;
 pub use self::resp::*;
@@ -16,7 +16,6 @@ pub use self::utils::{gen_random_jid, parse_datetime};
 const JOB_DEFAULT_QUEUE: &str = "default";
 const JOB_DEFAULT_RESERVED_FOR_SECS: usize = 600;
 const JOB_DEFAULT_RETRY_COUNT: usize = 25;
-const JOB_PRIORITY_MAX: u8 = 9;
 const JOB_DEFAULT_PRIORITY: u8 = 5;
 const JOB_DEFAULT_BACKTRACE: usize = 0;
 
@@ -33,21 +32,33 @@ const JOB_DEFAULT_BACKTRACE: usize = 0;
 /// ```
 /// use faktory::JobBuilder;
 ///
-/// let result = JobBuilder::default()
-///     .kind("order")
+/// let _job = JobBuilder::new("order")
 ///     .args(vec!["ISBN-13:9781718501850"])
 ///     .build();
-/// if result.is_err() {
-///     todo!("Handle me gracefully, please.")
-/// };
-/// let _job = result.unwrap();
+/// ```
+///
+/// Equivalently:
+/// ```
+/// use faktory::Job;
+///
+/// let _job = Job::builder("order")
+///     .args(vec!["ISBN-13:9781718501850"])
+///     .build();
+/// ```
+///
+/// In case no arguments are expected 'on the other side', you can simply go with:
+/// ```
+/// use faktory::Job;
+///
+/// let _job = Job::builder("rebuild_index").build();
 /// ```
 ///
 /// See also the [Faktory wiki](https://github.com/contribsys/faktory/wiki/The-Job-Payload).
 #[derive(Serialize, Deserialize, Debug, Builder)]
 #[builder(
+    custom_constructor,
     setter(into),
-    build_fn(name = "try_build", private, validate = "Self::validate")
+    build_fn(name = "try_build", private)
 )]
 pub struct Job {
     /// The job's unique identifier.
@@ -60,10 +71,11 @@ pub struct Job {
 
     /// The job's type. Called `kind` because `type` is reserved.
     #[serde(rename = "jobtype")]
+    #[builder(setter(custom))]
     pub(crate) kind: String,
 
     /// The arguments provided for this job.
-    #[builder(setter(custom))]
+    #[builder(setter(custom), default = "Vec::new()")]
     pub(crate) args: Vec<serde_json::Value>,
 
     /// When this job was created.
@@ -134,6 +146,14 @@ pub struct Job {
 }
 
 impl JobBuilder {
+    /// Create a new instance of 'JobBuilder'
+    pub fn new(kind: impl Into<String>) -> JobBuilder {
+        JobBuilder {
+            kind: Some(kind.into()),
+            ..JobBuilder::create_empty()
+        }
+    }
+
     /// Setter for the arguments provided for this job.
     pub fn args<A>(&mut self, args: Vec<A>) -> &mut Self
     where
@@ -226,27 +246,14 @@ impl JobBuilder {
         self.add_to_custom_data("track".into(), 1)
     }
 
-    fn validate(&self) -> Result<(), String> {
-        if let Some(ref priority) = self.priority {
-            if *priority > Some(JOB_PRIORITY_MAX) {
-                return Err("`priority` must be in the range from 0 to 9 inclusive".to_string());
-            }
-        }
-        Ok(())
-    }
-
-    /// Builds a new job
-    pub fn build(&self) -> Result<Job, Error> {
-        let job = self
-            .try_build()
-            .map_err(|err| error::Client::MalformedJob {
-                desc: err.to_string(),
-            })?;
-        Ok(job)
+    /// Builds a new 'Job'
+    pub fn build(&self) -> Job {
+        self.try_build()
+            .expect("All required fields have been set.")
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Failure {
     retry_count: usize,
     failed_at: String,
@@ -268,22 +275,14 @@ impl Job {
         S: Into<String>,
         A: Into<serde_json::Value>,
     {
-        Job {
-            jid: utils::gen_random_jid(),
-            queue: JOB_DEFAULT_QUEUE.into(),
-            kind: kind.into(),
-            args: args.into_iter().map(|s| s.into()).collect(),
+        JobBuilder::new(kind).args(args).build()
+    }
 
-            created_at: Some(Utc::now()),
-            enqueued_at: None,
-            at: None,
-            reserve_for: Some(JOB_DEFAULT_RESERVED_FOR_SECS),
-            retry: Some(JOB_DEFAULT_RETRY_COUNT),
-            priority: Some(JOB_DEFAULT_PRIORITY),
-            backtrace: Some(JOB_DEFAULT_BACKTRACE),
-            failure: None,
-            custom: Default::default(),
-        }
+    /// Create an instance of JobBuilder with 'kind' already set.
+    ///
+    /// Equivalent to 'JobBuilder::new'
+    pub fn builder<S: Into<String>>(kind: S) -> JobBuilder {
+        JobBuilder::new(kind)
     }
 
     /// Place this job on the given `queue`.
@@ -350,10 +349,7 @@ pub struct Progress {
 /// progress, provided the job is trackable. A trackable job is the one with "track":1
 /// specified in the custom data hash.
 #[derive(Debug, Clone, Serialize, Builder)]
-#[builder(
-    setter(into),
-    build_fn(name = "try_build", private, validate = "Self::validate")
-)]
+#[builder(setter(into), build_fn(name = "try_build", private))]
 pub struct ProgressUpdate {
     /// Id of the tracked job.
     pub jid: String,
@@ -377,23 +373,10 @@ pub struct ProgressUpdate {
 }
 
 impl ProgressUpdateBuilder {
-    fn validate(&self) -> Result<(), String> {
-        if let Some(ref percent) = self.percent {
-            if *percent > Some(100) {
-                return Err("`percent` indicates job execution progress and should be in the range from 0 to 100 inclusive".to_string());
-            }
-        }
-        Ok(())
-    }
-
     /// Builds an instance of ProgressUpdate.
-    pub fn build(&self) -> Result<ProgressUpdate, Error> {
-        let progress = self
-            .try_build()
-            .map_err(|err| error::Client::ProgressUpdateMalformed {
-                desc: err.to_string(),
-            })?;
-        Ok(progress)
+    pub fn build(&self) -> ProgressUpdate {
+        self.try_build()
+            .expect("All required fields have been set.")
     }
 }
 
@@ -422,65 +405,19 @@ mod test {
     }
 
     #[test]
-    fn test_job_build_fails_if_kind_missing() {
-        let job = JobBuilder::default()
-            .args(vec!["ISBN-13:9781718501850"])
-            .build();
-        if let Error::Client(e) = job.unwrap_err() {
-            assert_eq!(
-                e.to_string(),
-                "job is malformed: `kind` must be initialized"
-            )
-        } else {
-            unreachable!()
-        }
-    }
-
-    #[test]
-    fn test_job_build_fails_if_args_missing() {
-        let job = JobBuilder::default().kind("order").build();
-        if let Error::Client(e) = job.unwrap_err() {
-            assert_eq!(
-                e.to_string(),
-                "job is malformed: `args` must be initialized"
-            );
-        } else {
-            unreachable!();
-        }
-    }
-
-    #[test]
-    fn test_job_build_fails_if_priority_invalid() {
-        let job = JobBuilder::default()
-            .kind("order")
-            .args(vec!["ISBN-13:9781718501850"])
-            .priority(JOB_PRIORITY_MAX + 1)
-            .build();
-        if let Error::Client(e) = job.unwrap_err() {
-            assert_eq!(
-                e.to_string(),
-                "job is malformed: `priority` must be in the range from 0 to 9 inclusive"
-            );
-        } else {
-            unreachable!()
-        }
-    }
-
-    #[test]
     fn test_job_can_be_created_with_builder() {
         let job_kind = "order";
         let job_args = vec!["ISBN-13:9781718501850"];
-        let job = JobBuilder::default()
-            .kind(job_kind)
-            .args(job_args.clone())
-            .build()
-            .unwrap();
+        let job = JobBuilder::new(job_kind).args(job_args.clone()).build();
 
         assert!(job.jid != "".to_owned());
         assert!(job.queue == JOB_DEFAULT_QUEUE.to_string());
         assert_eq!(job.kind, job_kind);
         assert_eq!(job.args, job_args);
+
+        assert!(job.created_at.is_some());
         assert!(job.created_at < Some(Utc::now()));
+
         assert!(job.enqueued_at.is_none());
         assert!(job.at.is_none());
         assert_eq!(job.reserve_for, Some(JOB_DEFAULT_RESERVED_FOR_SECS));
@@ -489,17 +426,17 @@ mod test {
         assert_eq!(job.backtrace, Some(JOB_DEFAULT_BACKTRACE));
         assert!(job.failure.is_none());
         assert_eq!(job.custom, HashMap::default());
+
+        let job = JobBuilder::new(job_kind).build();
+        assert!(job.args.is_empty());
     }
 
     #[test]
-    fn test_method_mew_and_builder_align() {
+    fn test_all_job_creation_variants_align() {
         let job1 = Job::new("order", vec!["ISBN-13:9781718501850"]);
-        let job2 = JobBuilder::default()
-            .kind("order")
+        let job2 = JobBuilder::new("order")
             .args(vec!["ISBN-13:9781718501850"])
-            .build()
-            .unwrap();
-
+            .build();
         assert_eq!(job1.kind, job2.kind);
         assert_eq!(job1.args, job2.args);
         assert_eq!(job1.queue, job2.queue);
@@ -509,17 +446,24 @@ mod test {
         assert_eq!(job1.retry, job2.retry);
         assert_eq!(job1.priority, job2.priority);
         assert_eq!(job1.backtrace, job2.backtrace);
-        assert_eq!(job1.failure, job2.failure);
         assert_eq!(job1.custom, job2.custom);
 
         assert_ne!(job1.jid, job2.jid);
         assert_ne!(job1.created_at, job2.created_at);
+
+        let job3 = Job::builder("order")
+            .args(vec!["ISBN-13:9781718501850"])
+            .build();
+        assert_eq!(job2.kind, job3.kind);
+        assert_eq!(job1.args, job2.args);
+
+        assert_ne!(job2.jid, job3.jid);
+        assert_ne!(job2.created_at, job3.created_at);
     }
 
     fn half_stuff() -> JobBuilder {
-        let mut job = JobBuilder::default();
+        let mut job = JobBuilder::new("order");
         job.args(vec!["ISBN-13:9781718501850"]);
-        job.kind("order");
         job
     }
 
@@ -529,8 +473,7 @@ mod test {
         let exp_at_iso = to_iso_string(exp_at);
         let job = half_stuff()
             .add_to_custom_data("expires_at".into(), exp_at_iso.clone())
-            .build()
-            .unwrap();
+            .build();
         assert_eq!(
             job.custom.get("expires_at").unwrap(),
             &serde_json::Value::from(exp_at_iso)
@@ -542,32 +485,24 @@ mod test {
     fn test_expiration_feature_for_enterprise_faktory() {
         let five_min = chrono::Duration::seconds(300);
         let exp_at = Utc::now() + five_min;
-        let job1 = half_stuff().expires_at(exp_at).build().unwrap();
+        let job1 = half_stuff().expires_at(exp_at).build();
         let stored = job1.custom.get("expires_at").unwrap();
         assert_eq!(stored, &serde_json::Value::from(to_iso_string(exp_at)));
 
-        let job2 = half_stuff().expires_in(five_min).build().unwrap();
+        let job2 = half_stuff().expires_in(five_min).build();
         assert!(job2.custom.get("expires_at").is_some());
     }
 
     #[test]
     #[cfg(feature = "ent")]
     fn test_uniqueness_faeture_for_enterprise_faktory() {
-        let job = half_stuff()
-            .unique_for(60)
-            .unique_until_start()
-            .build()
-            .unwrap();
+        let job = half_stuff().unique_for(60).unique_until_start().build();
         let stored_unique_for = job.custom.get("unique_for").unwrap();
         let stored_unique_until = job.custom.get("unique_until").unwrap();
         assert_eq!(stored_unique_for, &serde_json::Value::from(60));
         assert_eq!(stored_unique_until, &serde_json::Value::from("start"));
 
-        let job = half_stuff()
-            .unique_for(60)
-            .unique_until_success()
-            .build()
-            .unwrap();
+        let job = half_stuff().unique_for(60).unique_until_success().build();
 
         let stored_unique_until = job.custom.get("unique_until").unwrap();
         assert_eq!(stored_unique_until, &serde_json::Value::from("success"));
@@ -584,8 +519,7 @@ mod test {
             .unique_for(40)
             .add_to_custom_data("expires_at".into(), to_iso_string(expires_at1))
             .expires_at(expires_at2)
-            .build()
-            .unwrap();
+            .build();
         let stored_unique_for = job.custom.get("unique_for").unwrap();
         assert_eq!(stored_unique_for, &serde_json::Value::from(40));
         let stored_expires_at = job.custom.get("expires_at").unwrap();
@@ -594,44 +528,13 @@ mod test {
             &serde_json::Value::from(to_iso_string(expires_at2))
         )
     }
-    #[test]
-    fn test_progress_update_needs_jid() {
-        let result = ProgressUpdateBuilder::default().build();
-
-        if let Error::Client(e) = result.unwrap_err() {
-            assert_eq!(
-                e.to_string(),
-                "progress update is malformed: `jid` must be initialized"
-            )
-        } else {
-            unreachable!();
-        }
-    }
-
-    #[test]
-    fn test_percent_validated_on_progress_update() {
-        let tracked = utils::gen_random_jid();
-        let result = ProgressUpdateBuilder::default()
-            .jid(tracked)
-            .percent(120)
-            .build();
-        if let Error::Client(e) = result.unwrap_err() {
-            assert_eq!(
-                e.to_string(),
-                "progress update is malformed: `percent` indicates job execution progress and should be in the range from 0 to 100 inclusive"
-            )
-        } else {
-            unreachable!();
-        }
-    }
 
     #[test]
     fn test_progress_update_can_be_created_with_builder() {
         let tracked = utils::gen_random_jid();
         let progress = ProgressUpdateBuilder::default()
             .jid(tracked.clone())
-            .build()
-            .unwrap();
+            .build();
 
         assert_eq!(progress.jid, tracked);
         assert!(progress.desc.is_none());
@@ -645,8 +548,7 @@ mod test {
             .desc("Resizing the image...".to_string())
             .percent(67)
             .reserve_until(extend.clone())
-            .build()
-            .unwrap();
+            .build();
 
         let serialized = serde_json::to_string(&progress).unwrap();
         println!("{}", serialized);
@@ -666,8 +568,7 @@ mod test {
 
         let progress = ProgressUpdateBuilder::default()
             .jid(tracked.clone())
-            .build()
-            .unwrap();
+            .build();
         let serialized = serde_json::to_string(&progress).unwrap();
 
         assert!(serialized.contains("jid"));

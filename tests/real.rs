@@ -167,6 +167,59 @@ fn queue() {
     assert!(worker_executed);
 }
 
+#[test]
+fn test_jobs_created_with_builder() {
+    skip_check!();
+
+    // prepare a producer ("client" in Faktory terms) and consumer ("worker"):
+    let mut producer = Producer::connect(None).unwrap();
+    let mut consumer = ConsumerBuilder::default();
+    consumer.register("rebuild_index", move |job| -> io::Result<_> {
+        assert!(job.args().is_empty());
+        Ok(eprintln!("{:?}", job))
+    });
+    consumer.register("register_order", move |job| -> io::Result<_> {
+        assert!(job.args().len() != 0);
+        Ok(eprintln!("{:?}", job))
+    });
+
+    let mut consumer = consumer.connect(None).unwrap();
+
+    // prepare some jobs with JobBuilder:
+    let job1 = JobBuilder::new("rebuild_index")
+        .queue("test_jobs_created_with_builder_0")
+        .build();
+
+    let job2 = Job::builder("register_order")
+        .args(vec!["ISBN-13:9781718501850"])
+        .queue("test_jobs_created_with_builder_1")
+        .build();
+
+    let mut job3 = Job::new("register_order", vec!["ISBN-13:9781718501850"]);
+    job3.queue = "test_jobs_created_with_builder_1".to_string();
+
+    // enqueue ...
+    producer.enqueue(job1).unwrap();
+    producer.enqueue(job2).unwrap();
+    producer.enqueue(job3).unwrap();
+
+    // ... and execute:
+    let had_job = consumer
+        .run_one(0, &["test_jobs_created_with_builder_0"])
+        .unwrap();
+    assert!(had_job);
+
+    let had_job = consumer
+        .run_one(0, &["test_jobs_created_with_builder_1"])
+        .unwrap();
+    assert!(had_job);
+
+    let had_job = consumer
+        .run_one(0, &["test_jobs_created_with_builder_1"])
+        .unwrap();
+    assert!(had_job);
+}
+
 #[cfg(feature = "ent")]
 macro_rules! skip_if_not_enterprise {
     () => {
@@ -205,12 +258,10 @@ fn ent_expiring_job() {
     let job_ttl_secs: u64 = 3;
 
     let ttl = chrono::Duration::seconds(job_ttl_secs as i64);
-    let job1 = JobBuilder::default()
-        .kind("AnExpiringJob")
+    let job1 = JobBuilder::new("AnExpiringJob")
         .args(vec!["ISBN-13:9781718501850"])
         .expires_at(chrono::Utc::now() + ttl)
-        .build()
-        .unwrap();
+        .build();
 
     // enqueue and fetch immediately job1:
     producer.enqueue(job1).unwrap();
@@ -222,12 +273,10 @@ fn ent_expiring_job() {
     assert!(!had_job);
 
     // prepare another one:
-    let job2 = JobBuilder::default()
-        .kind("AnExpiringJob")
+    let job2 = JobBuilder::new("AnExpiringJob")
         .args(vec!["ISBN-13:9781718501850"])
         .expires_at(chrono::Utc::now() + ttl)
-        .build()
-        .unwrap();
+        .build();
 
     // enquere and then fetch job2, but after ttl:
     producer.enqueue(job2).unwrap();
@@ -264,19 +313,15 @@ fn ent_unique_job() {
     // are not setting 'unique_for' when creating those jobs:
     let queue_name = "ent_unique_job";
     let args = vec![Value::from("ISBN-13:9781718501850"), Value::from(100)];
-    let job1 = JobBuilder::default()
+    let job1 = JobBuilder::new(job_type)
         .args(args.clone())
-        .kind(job_type)
         .queue(queue_name)
-        .build()
-        .unwrap();
+        .build();
     producer.enqueue(job1).unwrap();
-    let job2 = JobBuilder::default()
+    let job2 = JobBuilder::new(job_type)
         .args(args.clone())
-        .kind(job_type)
         .queue(queue_name)
-        .build()
-        .unwrap();
+        .build();
     producer.enqueue(job2).unwrap();
 
     let had_job = consumer.run_one(0, &[queue_name]).unwrap();
@@ -290,22 +335,18 @@ fn ent_unique_job() {
     // the same args and kind (jobtype in Faktory terms) and pushed
     // to the same queue:
     let unique_for_secs = 3;
-    let job1 = JobBuilder::default()
+    let job1 = Job::builder(job_type)
         .args(args.clone())
-        .kind(job_type)
         .queue(queue_name)
         .unique_for(unique_for_secs)
-        .build()
-        .unwrap();
+        .build();
     producer.enqueue(job1).unwrap();
     // this one is a 'duplicate' ...
-    let job2 = JobBuilder::default()
+    let job2 = Job::builder(job_type)
         .args(args.clone())
-        .kind(job_type)
         .queue(queue_name)
         .unique_for(unique_for_secs)
-        .build()
-        .unwrap();
+        .build();
     // ... so the server will respond accordingly:
     let res = producer.enqueue(job2).unwrap_err();
     if let error::Error::Protocol(error::Protocol::Internal { msg }) = res {
@@ -322,22 +363,18 @@ fn ent_unique_job() {
     assert!(!had_another_one);
 
     // Now let's repeat the latter case, but providing different args to job2:
-    let job1 = JobBuilder::default()
+    let job1 = JobBuilder::new(job_type)
         .args(args.clone())
-        .kind(job_type)
         .queue(queue_name)
         .unique_for(unique_for_secs)
-        .build()
-        .unwrap();
+        .build();
     producer.enqueue(job1).unwrap();
     // this one is *NOT* a 'duplicate' ...
-    let job2 = JobBuilder::default()
+    let job2 = JobBuilder::new(job_type)
         .args(vec![Value::from("ISBN-13:9781718501850"), Value::from(101)])
-        .kind(job_type)
         .queue(queue_name)
         .unique_for(unique_for_secs)
-        .build()
-        .unwrap();
+        .build();
     // ... so the server will accept it:
     producer.enqueue(job2).unwrap();
 
@@ -391,14 +428,12 @@ fn ent_unique_job_until_success() {
             Ok(eprintln!("{:?}", job))
         });
         let mut consumer_a = consumer_a.connect(Some(&url1)).unwrap();
-        let job = JobBuilder::default()
+        let job = JobBuilder::new(job_type)
             .args(vec![difficulty_level])
-            .kind(job_type)
             .queue(queue_name)
             .unique_for(unique_for)
             .unique_until_success() // Faktory's default
-            .build()
-            .unwrap();
+            .build();
         producer_a.enqueue(job).unwrap();
         let had_job = consumer_a.run_one(0, &[queue_name]).unwrap();
         assert!(had_job);
@@ -412,13 +447,12 @@ fn ent_unique_job_until_success() {
 
     // this one is a 'duplicate' because the job is still
     // being executed in the spawned thread:
-    let job = JobBuilder::default()
+    let job = JobBuilder::new(job_type)
         .args(vec![difficulty_level])
-        .kind(job_type)
         .queue(queue_name)
         .unique_for(unique_for)
-        .build()
-        .unwrap();
+        .build();
+
     // as a result:
     let res = producer_b.enqueue(job).unwrap_err();
     if let error::Error::Protocol(error::Protocol::Internal { msg }) = res {
@@ -433,13 +467,11 @@ fn ent_unique_job_until_success() {
     // (with ACK sent to server), the producer 'B' can push another one:
     assert!(producer_b
         .enqueue(
-            JobBuilder::default()
+            JobBuilder::new(job_type)
                 .args(vec![difficulty_level])
-                .kind(job_type)
                 .queue(queue_name)
                 .unique_for(unique_for)
                 .build()
-                .unwrap()
         )
         .is_ok());
 }
@@ -478,14 +510,12 @@ fn ent_unique_job_until_start() {
         let mut consumer_a = consumer_a.connect(Some(&url1)).unwrap();
         producer_a
             .enqueue(
-                JobBuilder::default()
+                JobBuilder::new(job_type)
                     .args(vec![difficulty_level])
-                    .kind(job_type)
                     .queue(queue_name)
                     .unique_for(unique_for)
                     .unique_until_start() // NB!
-                    .build()
-                    .unwrap(),
+                    .build(),
             )
             .unwrap();
         // as soon as the job is fetched, the unique lock gets released
@@ -500,13 +530,11 @@ fn ent_unique_job_until_start() {
     let mut producer_b = Producer::connect(Some(&url)).unwrap();
     assert!(producer_b
         .enqueue(
-            JobBuilder::default()
+            JobBuilder::new(job_type)
                 .args(vec![difficulty_level])
-                .kind(job_type)
                 .queue(queue_name)
                 .unique_for(unique_for)
                 .build()
-                .unwrap()
         )
         .is_ok());
 
@@ -525,20 +553,16 @@ fn test_tracker_can_send_progress_update() {
     let tracker_captured = Arc::clone(&tracker);
 
     let mut producer = Producer::connect(None).unwrap();
-    let job_tackable = JobBuilder::default()
+    let job_tackable = JobBuilder::new("order")
         .args(vec![Value::from("ISBN-13:9781718501850")])
-        .kind("order")
         .queue("test_tracker_can_send_progress_update")
         .trackable() // NB!
-        .build()
-        .expect("job built successfully");
+        .build();
 
-    let job_ordinary = JobBuilder::default()
+    let job_ordinary = JobBuilder::new("order")
         .args(vec![Value::from("ISBN-13:9781718501850")])
-        .kind("order")
         .queue("test_tracker_can_send_progress_update")
-        .build()
-        .expect("job built successfully");
+        .build();
 
     // let's remember this job's id:
     let job_id = job_tackable.id().to_owned();
@@ -560,8 +584,7 @@ fn test_tracker_can_send_progress_update() {
                     .jid(job_id_captured.clone())
                     .desc("I am still reading it...".to_owned())
                     .percent(32)
-                    .build()
-                    .unwrap(),
+                    .build(),
             );
         assert!(result.is_ok());
         // let's sleep for a while ...
