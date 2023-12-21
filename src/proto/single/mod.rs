@@ -11,7 +11,7 @@ use crate::error::Error;
 
 pub use self::cmd::*;
 pub use self::resp::*;
-pub use self::utils::{gen_random_jid, parse_datetime};
+pub use self::utils::{gen_random_jid, gen_random_wid, parse_datetime};
 
 const JOB_DEFAULT_QUEUE: &str = "default";
 const JOB_DEFAULT_RESERVED_FOR_SECS: usize = 600;

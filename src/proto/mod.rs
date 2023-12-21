@@ -12,7 +12,8 @@ mod single;
 
 // commands that users can issue
 pub use self::single::{
-    Ack, Fail, Heartbeat, Info, Job, JobBuilder, Push, QueueAction, QueueControl, Track,
+    gen_random_wid, Ack, Fail, Heartbeat, Info, Job, JobBuilder, Push, QueueAction, QueueControl,
+    Track,
 };
 
 // responses that users can see
@@ -198,14 +199,7 @@ impl<S: Read + Write> Client<S> {
                 .pid
                 .unwrap_or_else(|| unsafe { getpid() } as usize);
             self.opts.pid = Some(pid);
-            let wid = self.opts.wid.clone().unwrap_or_else(|| {
-                use rand::{thread_rng, Rng};
-                thread_rng()
-                    .sample_iter(&rand::distributions::Alphanumeric)
-                    .map(char::from)
-                    .take(32)
-                    .collect()
-            });
+            let wid = self.opts.wid.clone().unwrap_or_else(gen_random_wid);
             self.opts.wid = Some(wid);
 
             hello.hostname = Some(self.opts.hostname.clone().unwrap());
