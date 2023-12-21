@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-use crate::proto::{host_from_url, learn_url, Client, Track};
+use crate::proto::{host_from_url, parse_provided_or_from_env, Client, Track};
 use crate::{Error, Progress, ProgressUpdate};
 
 /// Used to retrieve and update information on a job's execution progress.
@@ -12,9 +12,9 @@ pub struct Tracker<S: Read + Write> {
 impl Tracker<TcpStream> {
     /// Create new tracker.
     pub fn connect(url: Option<&str>) -> Result<Tracker<TcpStream>, Error> {
-        let url = learn_url(url)?;
+        let url = parse_provided_or_from_env(url)?;
         let addr = host_from_url(&url);
-        let pwd = url.password().map(|p| p.to_string());
+        let pwd = url.password().map(Into::into);
         let stream = TcpStream::connect(addr)?;
         Ok(Tracker {
             c: Client::new_tracker(stream, pwd)?,
@@ -45,7 +45,7 @@ impl<S: Read + Write> Tracker<S> {
 
 #[cfg(test)]
 mod test {
-    use crate::proto::{host_from_url, learn_url};
+    use crate::proto::{host_from_url, parse_provided_or_from_env};
 
     use super::Tracker;
     use std::{env, net::TcpStream};
@@ -57,7 +57,7 @@ mod test {
         }
         let _ = Tracker::connect(None).expect("tracker successfully instantiated and connected");
 
-        let url = learn_url(None).expect("valid url");
+        let url = parse_provided_or_from_env(None).expect("valid url");
         let host = host_from_url(&url);
         let stream = TcpStream::connect(host).expect("connected");
         let pwd = url.password().map(String::from);

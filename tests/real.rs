@@ -567,9 +567,7 @@ fn test_tracker_can_send_and_retrieve_job_execution_progress() {
     let job_id = job_tackable.id().to_owned();
     let job_id_captured = job_id.clone();
 
-    producer
-        .enqueue(job_tackable)
-        .expect("enqueued");
+    producer.enqueue(job_tackable).expect("enqueued");
 
     let mut consumer = ConsumerBuilder::default();
     consumer.register("order", move |job| -> io::Result<_> {

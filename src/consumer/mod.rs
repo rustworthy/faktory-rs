@@ -1,5 +1,7 @@
 use crate::error::Error;
-use crate::proto::{self, learn_url, Client, ClientOptions, HeartbeatStatus, Reconnect};
+use crate::proto::{
+    self, parse_provided_or_from_env, Client, ClientOptions, HeartbeatStatus, Reconnect,
+};
 use atomic_option::AtomicOption;
 use fnv::FnvHashMap;
 use std::error::Error as StdError;
@@ -209,7 +211,7 @@ impl<E> ConsumerBuilder<E> {
     ///
     /// If `url` is given, but does not specify a port, it defaults to 7419.
     pub fn connect(self, url: Option<&str>) -> Result<Consumer<TcpStream, E>, Error> {
-        let url = learn_url(url)?;
+        let url = parse_provided_or_from_env(url)?;
         let stream = TcpStream::connect(proto::host_from_url(&url))?;
         Self::connect_with(self, stream, url.password().map(|p| p.to_string()))
     }
