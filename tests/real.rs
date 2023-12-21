@@ -4,11 +4,7 @@ extern crate url;
 
 use faktory::*;
 use serde_json::Value;
-use std::{
-    env, io,
-    sync::{self, Arc, Mutex},
-    thread, time,
-};
+use std::{io, sync};
 
 macro_rules! skip_check {
     () => {
@@ -542,7 +538,14 @@ fn ent_unique_job_until_start() {
 }
 
 #[test]
+#[cfg(feature = "ent")]
 fn test_tracker_can_send_and_retrieve_job_execution_progress() {
+    use std::{
+        env, io,
+        sync::{Arc, Mutex},
+        thread, time,
+    };
+
     if env::var_os("FAKTORY_URL").is_none() || env::var_os("FAKTORY_ENT").is_none() {
         return;
     }

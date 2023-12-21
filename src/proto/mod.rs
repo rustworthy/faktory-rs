@@ -13,7 +13,6 @@ mod single;
 // commands that users can issue
 pub use self::single::{
     gen_random_wid, Ack, Fail, Heartbeat, Info, Job, JobBuilder, Push, QueueAction, QueueControl,
-    Track,
 };
 
 // responses that users can see
@@ -21,7 +20,8 @@ pub use self::single::Hi;
 
 pub use self::single::gen_random_jid;
 
-pub use self::single::{Progress, ProgressUpdate, ProgressUpdateBuilder};
+#[cfg(feature = "ent")]
+pub use self::single::{Progress, ProgressUpdate, ProgressUpdateBuilder, Track};
 
 pub(crate) fn get_env_url() -> String {
     use std::env;
@@ -154,6 +154,7 @@ impl<S: Read + Write> Client<S> {
         Self::new(stream, opts)
     }
 
+    #[cfg(feature = "ent")]
     pub(crate) fn new_tracker(stream: S, pwd: Option<String>) -> Result<Client<S>, Error> {
         let opts = ClientOptions {
             password: pwd,
@@ -211,6 +212,7 @@ impl<S: Read + Write> Client<S> {
         single::write_command_and_await_ok(&mut self.stream, &hello)
     }
 
+    #[cfg(feature = "ent")]
     fn init_tracker(&mut self) -> Result<(), Error> {
         let hi = single::read_hi(&mut self.stream)?;
 

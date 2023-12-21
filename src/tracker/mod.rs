@@ -5,7 +5,7 @@ use crate::proto::{host_from_url, parse_provided_or_from_env, Client, Track};
 use crate::{Error, Progress, ProgressUpdate};
 
 /// Used to retrieve and update information on a job's execution progress.
-/// 
+///
 /// ```no_run
 /// # use faktory::Tracker;
 /// let job_id = String::from("W8qyVle9vXzUWQOf");
@@ -54,7 +54,7 @@ impl<S: Read + Write> Tracker<S> {
         })
     }
 
-    /// Send information on a job's execution progress to Faktory .
+    /// Send information on a job's execution progress to Faktory.
     pub fn set_progress(&mut self, upd: ProgressUpdate) -> Result<(), Error> {
         let cmd = Track::Set(upd);
         self.c.issue(&cmd)?.await_ok()

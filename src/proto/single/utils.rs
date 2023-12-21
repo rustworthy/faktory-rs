@@ -1,11 +1,5 @@
 use rand::{thread_rng, Rng};
 
-use chrono::{DateTime, Utc};
-use serde::{
-    de::{Deserializer, IntoDeserializer},
-    Deserialize,
-};
-
 const JOB_ID_LENGTH: usize = 16;
 const WORKER_ID_LENGTH: usize = 32;
 
@@ -25,8 +19,18 @@ pub fn gen_random_wid() -> String {
     gen_random_id(WORKER_ID_LENGTH)
 }
 
+#[cfg(feature = "ent")]
+use chrono::{DateTime, Utc};
+
+#[cfg(feature = "ent")]
+use serde::{
+    de::{Deserializer, IntoDeserializer},
+    Deserialize,
+};
+
 // Used to parse responses from Faktory that look like this:
 // '{"jid":"f7APFzrS2RZi9eaA","state":"unknown","updated_at":""}'
+#[cfg(feature = "ent")]
 pub fn parse_datetime<'de, D>(value: D) -> Result<Option<DateTime<Utc>>, D::Error>
 where
     D: Deserializer<'de>,

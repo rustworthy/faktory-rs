@@ -11,7 +11,7 @@ use crate::error::Error;
 
 pub use self::cmd::*;
 pub use self::resp::*;
-pub use self::utils::{gen_random_jid, gen_random_wid, parse_datetime};
+pub use self::utils::{gen_random_jid, gen_random_wid};
 
 const JOB_DEFAULT_QUEUE: &str = "default";
 const JOB_DEFAULT_RESERVED_FOR_SECS: usize = 600;
@@ -238,14 +238,6 @@ impl JobBuilder {
         self.add_to_custom_data("unique_until".into(), "success")
     }
 
-    /// Specify that this job is trackable.
-    ///
-    /// Progress update can be sent and received only for the jobs that have
-    /// been explicitly marked as trackable.
-    pub fn trackable(&mut self) -> &mut Self {
-        self.add_to_custom_data("track".into(), 1)
-    }
-
     /// Builds a new `Job`
     pub fn build(&self) -> Job {
         self.try_build()
@@ -264,6 +256,7 @@ impl JobBuilder {
     ///     .args(vec!["ISBN-13:9781718501850"])
     ///     .build_trackable();
     /// ```
+    #[cfg(feature = "ent")]
     pub fn build_trackable(&mut self) -> Job {
         self.add_to_custom_data("track".into(), 1);
         self.build()
@@ -332,6 +325,9 @@ impl Job {
     }
 }
 
+#[cfg(feature = "ent")]
+pub use self::utils::parse_datetime;
+
 /// Info on job execution progress (retrieved).
 ///
 /// The tracker is guaranteed to get the following details: the job's id (though
@@ -341,6 +337,7 @@ impl Job {
 /// ([desc](struct.ProgressUpdate.html#structfield.desc)) and completion percentage
 /// ([percent](struct.ProgressUpdate.html#structfield.percent)) may be available,
 /// if the worker provided those details.
+#[cfg(feature = "ent")]
 #[derive(Debug, Clone, Deserialize)]
 pub struct Progress {
     /// Id of the tracked job.
@@ -365,6 +362,7 @@ pub struct Progress {
 /// In Enterprise Faktory, a client executing a job can report on the execution
 /// progress, provided the job is trackable. A trackable job is the one with "track":1
 /// specified in the custom data hash.
+#[cfg(feature = "ent")]
 #[derive(Debug, Clone, Serialize, Builder)]
 #[builder(
     custom_constructor,
@@ -394,6 +392,7 @@ pub struct ProgressUpdate {
     pub reserve_until: Option<DateTime<Utc>>,
 }
 
+#[cfg(feature = "ent")]
 impl ProgressUpdate {
     /// Create a new instance of `ProgressUpdateBuilder` with job ID already set.
     ///
@@ -415,6 +414,7 @@ impl ProgressUpdate {
     }
 }
 
+#[cfg(feature = "ent")]
 impl ProgressUpdateBuilder {
     /// Builds an instance of ProgressUpdate.
     pub fn build(&self) -> ProgressUpdate {
@@ -581,6 +581,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "ent")]
     fn test_buid_trackable_job() {
         let job = JobBuilder::new("thumbnail")
             .args(vec!["https://provider.io/bucket/key/"])
@@ -615,6 +616,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "ent")]
     fn test_progress_update_can_be_created_with_builder() {
         let tracked = utils::gen_random_jid();
         let progress1 = ProgressUpdateBuilder::new(&tracked).build();
@@ -631,6 +633,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "ent")]
     fn test_progress_builder_serialized_correctly() {
         let tracked = utils::gen_random_jid();
         let extra_time_needed = chrono::Duration::nanoseconds(111_111_111);
@@ -667,6 +670,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "ent")]
     fn test_progress_deserialized_correctly() {
         let raw = b"
         {

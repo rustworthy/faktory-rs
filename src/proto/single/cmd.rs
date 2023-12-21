@@ -1,7 +1,5 @@
-use crate::ProgressUpdate;
 use crate::{error::Error, Job};
 
-use std::fmt::Debug;
 use std::io::prelude::*;
 
 pub trait FaktoryCommand {
@@ -281,12 +279,20 @@ impl<'a, S: AsRef<str>> QueueControl<'a, S> {
 
 // ----------------------------------------------
 
+#[cfg(feature = "ent")]
+use crate::ProgressUpdate;
+
+#[cfg(feature = "ent")]
+use std::fmt::Debug;
+
+#[cfg(feature = "ent")]
 #[derive(Debug, Clone)]
 pub enum Track {
     Set(ProgressUpdate),
     Get(String),
 }
 
+#[cfg(feature = "ent")]
 impl FaktoryCommand for Track {
     fn issue<W: Write>(&self, w: &mut dyn Write) -> Result<(), Error> {
         match self {
@@ -303,3 +309,5 @@ impl FaktoryCommand for Track {
         }
     }
 }
+
+// ----------------------------------------------
