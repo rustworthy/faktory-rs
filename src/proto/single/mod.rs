@@ -246,10 +246,27 @@ impl JobBuilder {
         self.add_to_custom_data("track".into(), 1)
     }
 
-    /// Builds a new 'Job'
+    /// Builds a new `Job`
     pub fn build(&self) -> Job {
         self.try_build()
             .expect("All required fields have been set.")
+    }
+
+    /// Builds a new _trackable_ `Job``.
+    ///
+    /// Progress update can be sent and received only for the jobs that have
+    /// been explicitly marked as trackable via `"track":1` in the job's
+    /// custom hash.
+    /// ```
+    /// use faktory::JobBuilder;
+    ///
+    /// let _job = JobBuilder::new("order")
+    ///     .args(vec!["ISBN-13:9781718501850"])
+    ///     .build_trackable();
+    /// ```
+    pub fn build_trackable(&mut self) -> Job {
+        self.add_to_custom_data("track".into(), 1);
+        self.build()
     }
 }
 
@@ -561,6 +578,40 @@ mod test {
             stored_expires_at,
             &serde_json::Value::from(to_iso_string(expires_at2))
         )
+    }
+
+    #[test]
+    fn test_buid_trackable_job() {
+        let job = JobBuilder::new("thumbnail")
+            .args(vec!["https://provider.io/bucket/key/"])
+            .build_trackable();
+        assert_eq!(job.custom.get("track").unwrap(), 1);
+
+        // the JobBuilder's terminal method 'new_trackable'
+        // will set 'track' to 1 on custom data:
+        let mut custom_data = HashMap::new();
+        custom_data.insert("lib".into(), serde_json::Value::from("sharp@1"));
+        custom_data.insert("track".into(), serde_json::Value::from("whatever"));
+
+        let job = JobBuilder::new("thumbnail")
+            .args(vec!["https://provider.io/bucket/key/"])
+            .custom(custom_data)
+            .add_to_custom_data("track".into(), "2")
+            .add_to_custom_data("quality".into(), 80)
+            .build_trackable();
+
+        // and still 'track:1' ...
+        assert_eq!(job.custom.get("track").unwrap(), 1);
+
+        // ... while the rest of custom data is intact:
+        assert_eq!(
+            job.custom.get("lib").unwrap(),
+            &serde_json::Value::from("sharp@1")
+        );
+        assert_eq!(
+            job.custom.get("quality").unwrap(),
+            &serde_json::Value::from(80)
+        );
     }
 
     #[test]

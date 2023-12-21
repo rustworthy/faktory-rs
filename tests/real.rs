@@ -556,8 +556,7 @@ fn test_tracker_can_send_progress_update() {
     let job_tackable = JobBuilder::new("order")
         .args(vec![Value::from("ISBN-13:9781718501850")])
         .queue("test_tracker_can_send_progress_update")
-        .trackable() // NB!
-        .build();
+        .build_trackable();
 
     let job_ordinary = JobBuilder::new("order")
         .args(vec![Value::from("ISBN-13:9781718501850")])
