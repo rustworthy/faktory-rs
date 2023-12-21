@@ -580,8 +580,7 @@ fn test_tracker_can_send_progress_update() {
             .lock()
             .expect("lock acquired successfully")
             .set_progress(
-                ProgressUpdateBuilder::default()
-                    .jid(job_id_captured.clone())
+                ProgressUpdateBuilder::new(&job_id_captured)
                     .desc("I am still reading it...".to_owned())
                     .percent(32)
                     .build(),
