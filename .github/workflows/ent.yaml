@@ -36,3 +36,16 @@ jobs:
           FAKTORY_URL: tcp://127.0.0.1:7419
           FAKTORY_ENT: true
         run: cargo test --locked --features ent --all-targets
+
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: ========== PROCURE RUST TOOLCHAIN (STABLE) =======
+        run: |
+          rustup set profile minimal
+          rustup toolchain install stable
+
+      - name: ======== RUN DOC TESTS FOR "ENT" FEATURE =========
+        run: cargo test --features ent --doc
