@@ -542,13 +542,13 @@ fn ent_unique_job_until_start() {
 }
 
 #[test]
-fn test_tracker_can_send_progress_update() {
+fn test_tracker_can_send_and_retrieve_job_execution_progress() {
     if env::var_os("FAKTORY_URL").is_none() || env::var_os("FAKTORY_ENT").is_none() {
         return;
     }
 
     let tracker = Arc::new(Mutex::new(
-        Tracker::new(None).expect("job progress tracker created successfully"),
+        Tracker::connect(None).expect("job progress tracker created successfully"),
     ));
     let tracker_captured = Arc::clone(&tracker);
 
@@ -569,7 +569,7 @@ fn test_tracker_can_send_progress_update() {
 
     producer
         .enqueue(job_tackable)
-        .expect("enqueued successfully");
+        .expect("enqueued");
 
     let mut consumer = ConsumerBuilder::default();
     consumer.register("order", move |job| -> io::Result<_> {
@@ -577,7 +577,7 @@ fn test_tracker_can_send_progress_update() {
         // 'an internal server error occurred: tracking subsystem is only available in Faktory Enterprise'
         let result = tracker_captured
             .lock()
-            .expect("lock acquired successfully")
+            .expect("lock acquired")
             .set_progress(
                 ProgressUpdateBuilder::new(&job_id_captured)
                     .desc("I am still reading it...".to_owned())
@@ -591,7 +591,7 @@ fn test_tracker_can_send_progress_update() {
         // ... and read the progress info
         let result = tracker_captured
             .lock()
-            .expect("lock acquired successfully")
+            .expect("lock acquired")
             .get_progress(job_id_captured.clone())
             .expect("Retrieved progress update over the wire");
 
@@ -643,7 +643,7 @@ fn test_tracker_can_send_progress_update() {
     // ... and asking for its progress
     let result = tracker
         .lock()
-        .expect("lock acquired successfully")
+        .expect("lock acquired")
         .get_progress(job_id.clone())
         .expect("Retrieved progress update over the wire once again")
         .expect("Some progress");
