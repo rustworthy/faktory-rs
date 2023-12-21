@@ -177,12 +177,11 @@ impl JobBuilder {
     /// use faktory::JobBuilder;
     /// use chrono::{Duration, Utc};
     ///
-    /// let _job = JobBuilder::default()
-    ///     .kind("order")
+    /// let _job = JobBuilder::new("order")
     ///     .args(vec!["ISBN-13:9781718501850"])
     ///     .expires_at(Utc::now() + Duration::hours(1))
-    ///     .build()
-    ///     .unwrap();
+    ///     .build();
+    /// ```
     #[cfg(feature = "ent")]
     pub fn expires_at(&mut self, dt: DateTime<Utc>) -> &mut Self {
         self.add_to_custom_data(
@@ -199,12 +198,10 @@ impl JobBuilder {
     /// use faktory::JobBuilder;
     /// use chrono::Duration;
     ///
-    /// let _job = JobBuilder::default()
-    ///     .kind("order")
+    /// let _job = JobBuilder::new("order")
     ///     .args(vec!["ISBN-13:9781718501850"])
     ///     .expires_in(Duration::weeks(1))
-    ///     .build()
-    ///     .unwrap();
+    ///     .build();
     /// ```
     #[cfg(feature = "ent")]
     pub fn expires_in(&mut self, ttl: chrono::Duration) -> &mut Self {
