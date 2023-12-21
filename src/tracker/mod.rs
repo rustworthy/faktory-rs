@@ -5,12 +5,36 @@ use crate::proto::{host_from_url, parse_provided_or_from_env, Client, Track};
 use crate::{Error, Progress, ProgressUpdate};
 
 /// Used to retrieve and update information on a job's execution progress.
+/// 
+/// ```no_run
+/// # use faktory::Tracker;
+/// let job_id = String::from("W8qyVle9vXzUWQOf");
+/// let mut tracker = Tracker::connect(None)?;
+/// if let Some(progress) = tracker.get_progress(job_id)? {
+///     if progress.state == "success" {
+///       # /*
+///         ...
+///       # */
+///     }
+/// }
+/// # Ok::<(), faktory::Error>(())
+/// ```
 pub struct Tracker<S: Read + Write> {
     c: Client<S>,
 }
 
 impl Tracker<TcpStream> {
-    /// Create new tracker.
+    /// Create new tracker and connect to a Faktory server.
+    ///
+    /// If `url` is not given, will use the standard Faktory environment variables. Specifically,
+    /// `FAKTORY_PROVIDER` is read to get the name of the environment variable to get the address
+    /// from (defaults to `FAKTORY_URL`), and then that environment variable is read to get the
+    /// server address. If the latter environment variable is not defined, the connection will be
+    /// made to
+    ///
+    /// ```text
+    /// tcp://localhost:7419
+    /// ```
     pub fn connect(url: Option<&str>) -> Result<Tracker<TcpStream>, Error> {
         let url = parse_provided_or_from_env(url)?;
         let addr = host_from_url(&url);
