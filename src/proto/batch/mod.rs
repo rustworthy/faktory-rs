@@ -1,6 +1,8 @@
+use std::io::{Read, Write};
+
 use derive_builder::Builder;
 
-use crate::Job;
+use crate::{Error, Job, Producer};
 
 /// Batch of jobs.
 ///
@@ -49,8 +51,8 @@ pub struct Batch {
 
 impl Batch {
     /// Create a new `BatchBuilder`.
-    pub fn builder() -> BatchBuilder {
-        BatchBuilder::create_empty()
+    pub fn builder(description: impl Into<Option<String>>) -> BatchBuilder {
+        BatchBuilder::new(description)
     }
 }
 
@@ -97,6 +99,33 @@ impl BatchBuilder {
         self.success(success_cb);
         self.complete(complete_cb);
         self.build()
+    }
+}
+
+pub struct BatchHandle<'a, S: Read + Write> {
+    bid: String,
+    prod: &'a mut Producer<S>,
+}
+
+impl<'a, S: Read + Write> BatchHandle<'a, S> {
+    /// ID issued by the Faktory server to this batch.
+    pub fn bid(&self) -> &str {
+        self.bid.as_str()
+    }
+
+    pub(crate) fn new(bid: String, prod: &mut Producer<S>) -> BatchHandle<'_, S> {
+        BatchHandle { bid, prod }
+    }
+
+    /// Add the given job to the batch.
+    pub fn add(&mut self, mut job: Job) -> Result<(), Error> {
+        job.custom.insert("bid".into(), self.bid.clone().into());
+        self.prod.enqueue(job)
+    }
+
+    /// Commit this batch.
+    pub fn commit(self) -> Result<(), Error> {
+        self.prod.commit_batch(self.bid)
     }
 }
 

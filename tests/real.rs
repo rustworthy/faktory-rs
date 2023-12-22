@@ -662,3 +662,82 @@ fn test_tracker_can_send_and_retrieve_job_execution_progress() {
     assert!(result.percent.is_none());
     assert!(result.desc.is_none());
 }
+
+#[test]
+fn test_batch_of_jobs_can_be_initiated() {
+    use std::env;
+
+    if env::var_os("FAKTORY_URL").is_none() || env::var_os("FAKTORY_ENT").is_none() {
+        return;
+    }
+
+    let mut producer = Producer::connect(None).unwrap();
+    let mut consumer = ConsumerBuilder::default();
+    consumer.register("thumbnail", move |_job| -> io::Result<_> { Ok(()) });
+    consumer.register("clean_up", move |_job| -> io::Result<_> { Ok(()) });
+    let mut consumer = consumer.connect(None).unwrap();
+
+    let job_1 = Job::builder("thumbnail")
+        .args(vec!["path/to/original/image1"])
+        .queue("test_batch_of_jobs_can_be_initiated")
+        .build();
+    let job_2 = Job::builder("thumbnail")
+        .args(vec!["path/to/original/image2"])
+        .queue("test_batch_of_jobs_can_be_initiated")
+        .build();
+    let job_3 = Job::builder("thumbnail")
+        .args(vec!["path/to/original/image3"])
+        .queue("test_batch_of_jobs_can_be_initiated")
+        .build();
+
+    let cb_job = Job::builder("clean_up")
+        .queue("test_batch_of_jobs_can_be_initiated__CALLBACKs")
+        .build();
+
+    let batch =
+        Batch::builder("Image resizing workload".to_string()).with_complete_callback(cb_job);
+    let mut batch_handle = producer.batch(batch).unwrap();
+    batch_handle.add(job_1).unwrap();
+    batch_handle.add(job_2).unwrap();
+    batch_handle.add(job_3).unwrap();
+    batch_handle.commit().unwrap();
+
+    // consume and execute job 1 ...
+    let had_one = consumer
+        .run_one(0, &["test_batch_of_jobs_can_be_initiated"])
+        .unwrap();
+    assert!(had_one);
+
+    // ... and try consuming from the "callback" queue:
+    let had_one = consumer
+        .run_one(0, &["test_batch_of_jobs_can_be_initiated__CALLBACKs"])
+        .unwrap();
+    assert!(!had_one); // nothing in there
+
+    // now, consume and execute job 2
+    let had_one = consumer
+        .run_one(0, &["test_batch_of_jobs_can_be_initiated"])
+        .unwrap();
+    assert!(had_one);
+
+    // ... and the "callback" queue again:
+    let had_one = consumer
+        .run_one(0, &["test_batch_of_jobs_can_be_initiated__CALLBACKs"])
+        .unwrap();
+    assert!(!had_one); // not just yet ...
+
+    // finally, consume and execute job 3 - the last one from the batch
+    let had_one = consumer
+        .run_one(0, &["test_batch_of_jobs_can_be_initiated"])
+        .unwrap();
+    assert!(had_one);
+
+    // and check the "callback" queue:
+    let had_one = consumer
+        .run_one(0, &["test_batch_of_jobs_can_be_initiated__CALLBACKs"])
+        .unwrap();
+
+    // callback had been fired by Faktory and successfully consumed
+    // by this consumer:
+    assert!(had_one);
+}

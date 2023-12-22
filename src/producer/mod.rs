@@ -1,7 +1,9 @@
 use crate::error::Error;
 use crate::proto::{
-    self, parse_provided_or_from_env, Client, Info, Job, Push, QueueAction, QueueControl,
+    self, parse_provided_or_from_env, BatchHandle, Client, Info, Job, Push, QueueAction,
+    QueueControl,
 };
+use crate::Batch;
 use std::io::prelude::*;
 use std::net::TcpStream;
 
@@ -127,6 +129,16 @@ impl<S: Read + Write> Producer<S> {
         self.c
             .issue(&QueueControl::new(QueueAction::Resume, queues))?
             .await_ok()
+    }
+
+    /// Initiate a new batch of jobs.
+    pub fn batch(&mut self, _batch: Batch) -> Result<BatchHandle<'_, S>, Error> {
+        let bid = /* register this batch */ "fasfasaf".into();
+        Ok(BatchHandle::new(bid, self))
+    }
+
+    pub(crate) fn commit_batch(&mut self, _bid: String) -> Result<(), Error> {
+        Ok(())
     }
 }
 

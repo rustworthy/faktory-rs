@@ -21,7 +21,7 @@ pub use self::single::Hi;
 pub use self::single::gen_random_jid;
 
 mod batch;
-pub use batch::{Batch, BatchBuilder};
+pub use batch::{Batch, BatchBuilder, BatchHandle};
 
 #[cfg(feature = "ent")]
 pub use self::single::{Progress, ProgressUpdate, ProgressUpdateBuilder, Track};
