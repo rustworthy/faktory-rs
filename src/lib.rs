@@ -77,6 +77,8 @@ pub use crate::proto::Reconnect;
 
 pub use crate::proto::{Job, JobBuilder};
 
+pub use crate::proto::{Batch, BatchBuilder};
+
 #[cfg(feature = "ent")]
 mod tracker;
 #[cfg(feature = "ent")]

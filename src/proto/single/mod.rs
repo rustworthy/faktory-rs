@@ -54,7 +54,7 @@ const JOB_DEFAULT_BACKTRACE: usize = 0;
 /// ```
 ///
 /// See also the [Faktory wiki](https://github.com/contribsys/faktory/wiki/The-Job-Payload).
-#[derive(Serialize, Deserialize, Debug, Builder)]
+#[derive(Serialize, Deserialize, Debug, Clone, Builder)]
 #[builder(
     custom_constructor,
     setter(into),
@@ -358,7 +358,7 @@ pub struct Progress {
 }
 
 /// Info on job execution progress (sent).
-///
+////
 /// In Enterprise Faktory, a client executing a job can report on the execution
 /// progress, provided the job is trackable. A trackable job is the one with "track":1
 /// specified in the custom data hash.
