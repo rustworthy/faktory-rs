@@ -696,11 +696,11 @@ fn test_batch_of_jobs_can_be_initiated() {
 
     let batch =
         Batch::builder("Image resizing workload".to_string()).with_complete_callback(cb_job);
-    let mut batch_handle = producer.batch(batch).unwrap();
-    batch_handle.add(job_1).unwrap();
-    batch_handle.add(job_2).unwrap();
-    batch_handle.add(job_3).unwrap();
-    batch_handle.commit().unwrap();
+    let mut batch = producer.start_batch(batch).unwrap();
+    batch.add(job_1).unwrap();
+    batch.add(job_2).unwrap();
+    batch.add(job_3).unwrap();
+    batch.commit().unwrap();
 
     // consume and execute job 1 ...
     let had_one = consumer

@@ -4,6 +4,10 @@ use derive_builder::Builder;
 
 use crate::{Error, Job, Producer};
 
+mod cmd;
+
+pub use cmd::CommitBatch;
+
 /// Batch of jobs.
 ///
 /// Faktory guarantees a callback (`success` and/or `failure`) will be triggered after the execution
@@ -109,8 +113,8 @@ pub struct BatchHandle<'a, S: Read + Write> {
 
 impl<'a, S: Read + Write> BatchHandle<'a, S> {
     /// ID issued by the Faktory server to this batch.
-    pub fn bid(&self) -> &str {
-        self.bid.as_str()
+    pub fn id(&self) -> &str {
+        self.bid.as_ref()
     }
 
     pub(crate) fn new(bid: String, prod: &mut Producer<S>) -> BatchHandle<'_, S> {

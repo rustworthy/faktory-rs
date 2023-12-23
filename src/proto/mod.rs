@@ -21,7 +21,7 @@ pub use self::single::Hi;
 pub use self::single::gen_random_jid;
 
 mod batch;
-pub use batch::{Batch, BatchBuilder, BatchHandle};
+pub use batch::{Batch, BatchBuilder, BatchHandle, CommitBatch};
 
 #[cfg(feature = "ent")]
 pub use self::single::{Progress, ProgressUpdate, ProgressUpdateBuilder, Track};
@@ -301,6 +301,10 @@ impl<'a, S: Read + Write> ReadToken<'a, S> {
         T: serde::de::DeserializeOwned,
     {
         single::read_json(&mut self.0.stream)
+    }
+
+    pub(crate) fn read_bid(self) -> Result<String, Error> {
+        single::read_bid(&mut self.0.stream)
     }
 }
 
