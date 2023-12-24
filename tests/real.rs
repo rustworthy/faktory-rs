@@ -2,6 +2,7 @@ extern crate faktory;
 extern crate serde_json;
 extern crate url;
 
+use chrono::Utc;
 use faktory::*;
 use serde_json::Value;
 use std::{io, sync};
@@ -676,6 +677,7 @@ fn test_batch_of_jobs_can_be_initiated() {
     consumer.register("thumbnail", move |_job| -> io::Result<_> { Ok(()) });
     consumer.register("clean_up", move |_job| -> io::Result<_> { Ok(()) });
     let mut consumer = consumer.connect(None).unwrap();
+    let mut tracker = Tracker::connect(None).expect("job progress tracker created successfully");
 
     let job_1 = Job::builder("thumbnail")
         .args(vec!["path/to/original/image1"])
@@ -695,12 +697,40 @@ fn test_batch_of_jobs_can_be_initiated() {
         .build();
 
     let batch =
-        Batch::builder("Image resizing workload".to_string()).with_complete_callback(cb_job);
+    Batch::builder("Image resizing workload".to_string()).with_complete_callback(cb_job);
+
+    let time_just_before_batch_init = Utc::now();
+
     let mut batch = producer.start_batch(batch).unwrap();
+
+    // let's remember batch id:
+    let batch_id = batch.id().to_string();
+
     batch.add(job_1).unwrap();
     batch.add(job_2).unwrap();
     batch.add(job_3).unwrap();
     batch.commit().unwrap();
+
+    // The batch has been committed, let's see its status:
+    let time_just_before_getting_status = Utc::now();
+
+    let status = tracker
+        .get_batch_status(batch_id.clone())
+        .expect("successfully fetched batch status from server...")
+        .expect("...and it's not none");
+
+    // Just to make a meaningfull assertion about the BatchStatus's 'created_at' field:
+    assert!(status.created_at > time_just_before_batch_init);
+    assert!(status.created_at < time_just_before_getting_status);
+    assert_eq!(status.bid, batch_id);
+    assert_eq!(status.description, Some("Image resizing workload".into()));
+    assert_eq!(status.total, 3); // three jobs registered
+    assert_eq!(status.pending, 3); // and none executed just yet
+    assert_eq!(status.failed, 0);
+    // Docs do not mention it, but the golang client does:
+    // https://github.com/contribsys/faktory/blob/main/client/batch.go#L17-L19
+    assert_eq!(status.success_state, ""); // we did not even provide the 'success' callback
+    assert_eq!(status.complete_state, ""); // the 'complete' callback is pending
 
     // consume and execute job 1 ...
     let had_one = consumer
@@ -714,6 +744,18 @@ fn test_batch_of_jobs_can_be_initiated() {
         .unwrap();
     assert!(!had_one); // nothing in there
 
+    // let's ask the Faktory server about the batch status after
+    // we have consumed one job from this batch:
+    let status = tracker
+        .get_batch_status(batch_id.clone())
+        .expect("successfully fetched batch status from server...")
+        .expect("...and it's not none");
+
+    // this is because we have just consumed and executed 1 of 3 jobs:
+    assert_eq!(status.total, 3);
+    assert_eq!(status.pending, 2);
+    assert_eq!(status.failed, 0);
+
     // now, consume and execute job 2
     let had_one = consumer
         .run_one(0, &["test_batch_of_jobs_can_be_initiated"])
@@ -726,18 +768,48 @@ fn test_batch_of_jobs_can_be_initiated() {
         .unwrap();
     assert!(!had_one); // not just yet ...
 
+    // let's check batch status once again:
+    let status = tracker
+        .get_batch_status(batch_id.clone())
+        .expect("successfully fetched batch status from server...")
+        .expect("...and it's not none");
+
+    // this is because we have just consumed and executed 2 of 3 jobs:
+    assert_eq!(status.total, 3);
+    assert_eq!(status.pending, 1);
+    assert_eq!(status.failed, 0);
+
     // finally, consume and execute job 3 - the last one from the batch
     let had_one = consumer
         .run_one(0, &["test_batch_of_jobs_can_be_initiated"])
         .unwrap();
     assert!(had_one);
 
-    // and check the "callback" queue:
+    // let's check batch status to see what happens after
+    // all the jobs from the batch have been executed:
+    let status = tracker
+        .get_batch_status(batch_id.clone())
+        .expect("successfully fetched batch status from server...")
+        .expect("...and it's not none");
+
+    // this is because we have just consumed and executed 2 of 3 jobs:
+    assert_eq!(status.total, 3);
+    assert_eq!(status.pending, 0);
+    assert_eq!(status.failed, 0);
+    assert_eq!(status.complete_state, "1"); // callback has been enqueued!!
+
+    // let's now consume from the "callback" queue:
     let had_one = consumer
         .run_one(0, &["test_batch_of_jobs_can_be_initiated__CALLBACKs"])
         .unwrap();
+    assert!(had_one); // we successfully consumed the callback
 
-    // callback had been fired by Faktory and successfully consumed
-    // by this consumer:
-    assert!(had_one);
+    // let's check batch status one last time:
+    let status = tracker
+        .get_batch_status(batch_id.clone())
+        .expect("successfully fetched batch status from server...")
+        .expect("...and it's not none");
+
+    // this is because we have just consumed and executed 2 of 3 jobs:
+    assert_eq!(status.complete_state, "2"); // means calledback successfully executed
 }

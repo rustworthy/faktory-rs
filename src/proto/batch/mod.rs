@@ -1,12 +1,13 @@
 use std::io::{Read, Write};
 
+use chrono::{DateTime, Utc};
 use derive_builder::Builder;
 
 use crate::{Error, Job, Producer};
 
 mod cmd;
 
-pub use cmd::CommitBatch;
+pub use cmd::{CommitBatch, GetBatchStatus};
 
 /// Batch of jobs.
 ///
@@ -131,6 +132,47 @@ impl<'a, S: Read + Write> BatchHandle<'a, S> {
     pub fn commit(self) -> Result<(), Error> {
         self.prod.commit_batch(self.bid)
     }
+}
+
+/// Batch status retrieved from Faktory server.
+#[derive(Deserialize)]
+pub struct BatchStatus {
+    // Fields "bid", "created_at", "description", "total", "pending", and "failed"
+    // are described in the docs: https://github.com/contribsys/faktory/wiki/Ent-Batches#status
+    /// Id of this batch.
+    pub bid: String,
+
+    /// Batch creation date and time.
+    pub created_at: DateTime<Utc>,
+
+    /// Batch description, if any.
+    pub description: Option<String>,
+
+    /// Number of jobs in this batch.
+    pub total: usize,
+
+    /// Number of pending jobs.
+    pub pending: usize,
+
+    /// Number of failed jobs.
+    pub failed: usize,
+
+    // The official golang client also mentions "parent_bid', "complete_st", and "success_st":
+    // https://github.com/contribsys/faktory/blob/main/client/batch.go#L8-L22
+    /// Id of the parent batch, provided this batch is a child ("nested") batch.
+    pub parent_bid: Option<String>,
+
+    /// State of the `complete` callback.
+    ///
+    /// See [complete](struct.Batch.html#structfield.complete).
+    #[serde(rename = "complete_st")]
+    pub complete_state: String,
+
+    /// State of the `success` callback.
+    ///
+    /// See [success](struct.Batch.html#structfield.success).
+    #[serde(rename = "success_st")]
+    pub success_state: String,
 }
 
 #[cfg(test)]

@@ -279,20 +279,20 @@ impl<'a, S: AsRef<str>> QueueControl<'a, S> {
 
 // ----------------------------------------------
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 use crate::ProgressUpdate;
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 use std::fmt::Debug;
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 #[derive(Debug, Clone)]
 pub enum Track {
     Set(ProgressUpdate),
     Get(String),
 }
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 impl FaktoryCommand for Track {
     fn issue<W: Write>(&self, w: &mut dyn Write) -> Result<(), Error> {
         match self {

@@ -1,8 +1,8 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-use crate::proto::{host_from_url, parse_provided_or_from_env, Client, Track};
-use crate::{Error, Progress, ProgressUpdate};
+use crate::proto::{host_from_url, parse_provided_or_from_env, Client, Track, GetBatchStatus};
+use crate::{Error, Progress, ProgressUpdate, BatchStatus};
 
 /// Used to retrieve and update information on a job's execution progress.
 ///
@@ -63,6 +63,12 @@ impl<S: Read + Write> Tracker<S> {
     /// Fetch information on a job's execution progress from Faktory.
     pub fn get_progress(&mut self, jid: String) -> Result<Option<Progress>, Error> {
         let cmd = Track::Get(jid);
+        self.c.issue(&cmd)?.read_json()
+    }
+
+    /// Fetch information on a batch of jobs execution progress.
+    pub fn get_batch_status(&mut self, bid: String) -> Result<Option<BatchStatus>, Error> {
+        let cmd = GetBatchStatus::from(bid);
         self.c.issue(&cmd)?.read_json()
     }
 }

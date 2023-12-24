@@ -256,7 +256,7 @@ impl JobBuilder {
     ///     .args(vec!["ISBN-13:9781718501850"])
     ///     .build_trackable();
     /// ```
-    #[cfg(feature = "ent")]
+    // #[cfg(feature = "ent")]
     pub fn build_trackable(&mut self) -> Job {
         self.add_to_custom_data("track".into(), 1);
         self.build()
@@ -325,7 +325,7 @@ impl Job {
     }
 }
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 pub use self::utils::parse_datetime;
 
 /// Info on job execution progress (retrieved).
@@ -337,7 +337,7 @@ pub use self::utils::parse_datetime;
 /// ([desc](struct.ProgressUpdate.html#structfield.desc)) and completion percentage
 /// ([percent](struct.ProgressUpdate.html#structfield.percent)) may be available,
 /// if the worker provided those details.
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 #[derive(Debug, Clone, Deserialize)]
 pub struct Progress {
     /// Id of the tracked job.
@@ -362,7 +362,7 @@ pub struct Progress {
 /// In Enterprise Faktory, a client executing a job can report on the execution
 /// progress, provided the job is trackable. A trackable job is the one with "track":1
 /// specified in the custom data hash.
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 #[derive(Debug, Clone, Serialize, Builder)]
 #[builder(
     custom_constructor,
@@ -392,7 +392,7 @@ pub struct ProgressUpdate {
     pub reserve_until: Option<DateTime<Utc>>,
 }
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 impl ProgressUpdate {
     /// Create a new instance of `ProgressUpdateBuilder` with job ID already set.
     ///
@@ -414,7 +414,7 @@ impl ProgressUpdate {
     }
 }
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 impl ProgressUpdateBuilder {
     /// Builds an instance of ProgressUpdate.
     pub fn build(&self) -> ProgressUpdate {
