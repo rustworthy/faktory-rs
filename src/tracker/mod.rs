@@ -1,8 +1,8 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-use crate::proto::{host_from_url, parse_provided_or_from_env, Client, Track, GetBatchStatus};
-use crate::{Error, Progress, ProgressUpdate, BatchStatus};
+use crate::proto::{host_from_url, parse_provided_or_from_env, Client, GetBatchStatus, Track};
+use crate::{BatchStatus, Error, Progress, ProgressUpdate};
 
 /// Used to retrieve and update information on a job's execution progress.
 ///

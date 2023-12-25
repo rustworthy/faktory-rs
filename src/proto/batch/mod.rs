@@ -128,6 +128,12 @@ impl<'a, S: Read + Write> BatchHandle<'a, S> {
         self.prod.enqueue(job)
     }
 
+    /// Initiate a child batch of jobs.
+    pub fn start_batch(&mut self, mut batch: Batch) -> Result<BatchHandle<'_, S>, Error> {
+        batch.parent_bid = Some(self.bid.clone());
+        self.prod.start_batch(batch)
+    }
+
     /// Commit this batch.
     pub fn commit(self) -> Result<(), Error> {
         self.prod.commit_batch(self.bid)

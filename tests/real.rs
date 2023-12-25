@@ -217,7 +217,7 @@ fn test_jobs_created_with_builder() {
     assert!(had_job);
 }
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 macro_rules! skip_if_not_enterprise {
     () => {
         if std::env::var_os("FAKTORY_ENT").is_none() {
@@ -226,7 +226,7 @@ macro_rules! skip_if_not_enterprise {
     };
 }
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 fn learn_faktory_url() -> String {
     let url = std::env::var_os("FAKTORY_URL").expect(
         "Enterprise Faktory should be running for this test, and 'FAKTORY_URL' environment variable should be provided",
@@ -542,21 +542,21 @@ fn ent_unique_job_until_start() {
 #[cfg(feature = "ent")]
 fn test_tracker_can_send_and_retrieve_job_execution_progress() {
     use std::{
-        env, io,
+        io,
         sync::{Arc, Mutex},
         thread, time,
     };
 
-    if env::var_os("FAKTORY_URL").is_none() || env::var_os("FAKTORY_ENT").is_none() {
-        return;
-    }
+    skip_if_not_enterprise!();
+
+    let url = learn_faktory_url();
 
     let tracker = Arc::new(Mutex::new(
-        Tracker::connect(None).expect("job progress tracker created successfully"),
+        Tracker::connect(Some(&url)).expect("job progress tracker created successfully"),
     ));
     let tracker_captured = Arc::clone(&tracker);
 
-    let mut producer = Producer::connect(None).unwrap();
+    let mut producer = Producer::connect(Some(&url)).unwrap();
     let job_tackable = JobBuilder::new("order")
         .args(vec![Value::from("ISBN-13:9781718501850")])
         .queue("test_tracker_can_send_progress_update")
@@ -610,7 +610,7 @@ fn test_tracker_can_send_and_retrieve_job_execution_progress() {
     });
 
     let mut consumer = consumer
-        .connect(None)
+        .connect(Some(&url))
         .expect("Successfully ran a handshake with 'Faktory'");
     let had_one_job = consumer
         .run_one(0, &["test_tracker_can_send_progress_update"])
@@ -666,18 +666,16 @@ fn test_tracker_can_send_and_retrieve_job_execution_progress() {
 
 #[test]
 fn test_batch_of_jobs_can_be_initiated() {
-    use std::env;
+    skip_if_not_enterprise!();
+    let url = learn_faktory_url();
 
-    if env::var_os("FAKTORY_URL").is_none() || env::var_os("FAKTORY_ENT").is_none() {
-        return;
-    }
-
-    let mut producer = Producer::connect(None).unwrap();
+    let mut producer = Producer::connect(Some(&url)).unwrap();
     let mut consumer = ConsumerBuilder::default();
     consumer.register("thumbnail", move |_job| -> io::Result<_> { Ok(()) });
     consumer.register("clean_up", move |_job| -> io::Result<_> { Ok(()) });
-    let mut consumer = consumer.connect(None).unwrap();
-    let mut tracker = Tracker::connect(None).expect("job progress tracker created successfully");
+    let mut consumer = consumer.connect(Some(&url)).unwrap();
+    let mut tracker =
+        Tracker::connect(Some(&url)).expect("job progress tracker created successfully");
 
     let job_1 = Job::builder("thumbnail")
         .args(vec!["path/to/original/image1"])
@@ -697,7 +695,7 @@ fn test_batch_of_jobs_can_be_initiated() {
         .build();
 
     let batch =
-    Batch::builder("Image resizing workload".to_string()).with_complete_callback(cb_job);
+        Batch::builder("Image resizing workload".to_string()).with_complete_callback(cb_job);
 
     let time_just_before_batch_init = Utc::now();
 
@@ -812,4 +810,96 @@ fn test_batch_of_jobs_can_be_initiated() {
 
     // this is because we have just consumed and executed 2 of 3 jobs:
     assert_eq!(status.complete_state, "2"); // means calledback successfully executed
+}
+
+#[test]
+fn test_batches_can_be_nested() {
+    skip_if_not_enterprise!();
+    let url = learn_faktory_url();
+
+    // Set up 'producer', 'consumer', and 'tracker':
+    let mut producer = Producer::connect(Some(&url)).unwrap();
+    let mut consumer = ConsumerBuilder::default();
+    consumer.register("jobtype", move |_job| -> io::Result<_> { Ok(()) });
+    let mut _consumer = consumer.connect(Some(&url)).unwrap();
+    let mut tracker =
+        Tracker::connect(Some(&url)).expect("job progress tracker created successfully");
+
+    // Prepare some jobs:
+    let parent_job1 = Job::builder("jobtype")
+        .queue("test_batches_can_be_nested")
+        .build();
+    let child_job_1 = Job::builder("jobtype")
+        .queue("test_batches_can_be_nested")
+        .build();
+    let child_job_2 = Job::builder("jobtype")
+        .queue("test_batches_can_be_nested")
+        .build();
+    let grand_child_job_1 = Job::builder("jobtype")
+        .queue("test_batches_can_be_nested")
+        .build();
+
+    // Sccording to Faktory docs:
+    // "The callback for a parent batch will not enqueue until the callback for the child batch has finished."
+    // See: https://github.com/contribsys/faktory/wiki/Ent-Batches#guarantees
+    let parent_cb_job = Job::builder("clean_up")
+        .queue("test_batches_can_be_nested__CALLBACKs")
+        .build();
+    let child_cb_job = Job::builder("clean_up")
+        .queue("test_batches_can_be_nested__CALLBACKs")
+        .build();
+    let grandchild_cb_job = Job::builder("clean_up")
+        .queue("test_batches_can_be_nested__CALLBACKs")
+        .build();
+
+    // batches start
+    let parent_batch =
+        Batch::builder("Parent batch".to_string()).with_success_callback(parent_cb_job);
+    let mut parent_batch = producer.start_batch(parent_batch).unwrap();
+    let parent_batch_id = parent_batch.id().to_owned();
+    parent_batch.add(parent_job1).unwrap();
+
+    let child_batch = Batch::builder("Child batch".to_string()).with_success_callback(child_cb_job);
+    let mut child_batch = parent_batch.start_batch(child_batch).unwrap();
+    let child_batch_id = child_batch.id().to_owned();
+    child_batch.add(child_job_1).unwrap();
+    child_batch.add(child_job_2).unwrap();
+
+    let grandchild_batch =
+        Batch::builder("Grandchild batch".to_string()).with_success_callback(grandchild_cb_job);
+    let mut grandchild_batch = child_batch.start_batch(grandchild_batch).unwrap();
+    let grandchild_batch_id = grandchild_batch.id().to_owned();
+    grandchild_batch.add(grand_child_job_1).unwrap();
+
+    grandchild_batch.commit().unwrap();
+    child_batch.commit().unwrap();
+    parent_batch.commit().unwrap();
+    // batches finish
+
+    let parent_status = tracker
+        .get_batch_status(parent_batch_id.clone())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parent_status.description, Some("Parent batch".to_string()));
+    assert_eq!(parent_status.total, 1);
+    assert_eq!(parent_status.parent_bid, None);
+
+    let child_status = tracker
+        .get_batch_status(child_batch_id.clone())
+        .unwrap()
+        .unwrap();
+    assert_eq!(child_status.description, Some("Child batch".to_string()));
+    assert_eq!(child_status.total, 2);
+    assert_eq!(child_status.parent_bid, Some(parent_batch_id));
+
+    let grandchild_status = tracker
+        .get_batch_status(grandchild_batch_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        grandchild_status.description,
+        Some("Grandchild batch".to_string())
+    );
+    assert_eq!(grandchild_status.total, 1);
+    assert_eq!(grandchild_status.parent_bid, Some(child_batch_id));
 }
