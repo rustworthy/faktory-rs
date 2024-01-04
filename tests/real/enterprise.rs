@@ -2,7 +2,9 @@ extern crate faktory;
 extern crate serde_json;
 extern crate url;
 
+use chrono::Utc;
 use faktory::*;
+use serde_json::Value;
 use std::io;
 
 macro_rules! skip_if_not_enterprise {

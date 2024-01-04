@@ -4,7 +4,8 @@ extern crate url;
 
 use faktory::*;
 use serde_json::Value;
-use std::{io, sync};
+use std::io;
+use std::sync;
 
 macro_rules! skip_check {
     () => {
