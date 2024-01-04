@@ -25,10 +25,7 @@ mod batch;
 // #[cfg(feature = "ent")]
 pub use batch::{Batch, BatchBuilder, BatchHandle, BatchStatus, CommitBatch, GetBatchStatus};
 // #[cfg(feature = "ent")]
-pub use self::single::{
-    ent::{Progress, ProgressUpdate, ProgressUpdateBuilder},
-    Track,
-};
+pub use self::single::ent::{Progress, ProgressUpdate, ProgressUpdateBuilder, Track};
 
 pub(crate) fn get_env_url() -> String {
     use std::env;

@@ -16,7 +16,7 @@ where
         Some(non_empty) => DateTime::deserialize(non_empty.into_deserializer()).map(Some),
     }
 }
-use crate::JobBuilder;
+use crate::{JobBuilder, Error};
 
 impl JobBuilder {
     /// When Faktory should expire this job.
@@ -177,6 +177,36 @@ impl ProgressUpdateBuilder {
         }
     }
 }
+
+// ----------------------------------------------
+
+use super::FaktoryCommand;
+use std::{fmt::Debug, io::Write};
+
+#[derive(Debug, Clone)]
+pub enum Track {
+    Set(ProgressUpdate),
+    Get(String),
+}
+
+impl FaktoryCommand for Track {
+    fn issue<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        match self {
+            Self::Set(upd) => {
+                w.write_all(b"TRACK SET ")?;
+                serde_json::to_writer(&mut *w, upd).map_err(Error::Serialization)?;
+                Ok(w.write_all(b"\r\n")?)
+            }
+            Self::Get(jid) => {
+                w.write_all(b"TRACK GET ")?;
+                w.write_all(jid.as_bytes())?;
+                Ok(w.write_all(b"\r\n")?)
+            }
+        }
+    }
+}
+
+// ----------------------------------------------
 
 #[cfg(test)]
 mod test {
