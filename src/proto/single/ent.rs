@@ -16,7 +16,7 @@ where
         Some(non_empty) => DateTime::deserialize(non_empty.into_deserializer()).map(Some),
     }
 }
-use crate::{JobBuilder, Error};
+use crate::{Error, JobBuilder};
 
 impl JobBuilder {
     /// When Faktory should expire this job.
