@@ -280,7 +280,7 @@ impl<'a, S: AsRef<str>> QueueControl<'a, S> {
 // ----------------------------------------------
 
 // #[cfg(feature = "ent")]
-use crate::ProgressUpdate;
+use crate::proto::single::ent::ProgressUpdate;
 
 // #[cfg(feature = "ent")]
 use std::fmt::Debug;

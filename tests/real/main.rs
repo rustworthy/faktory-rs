@@ -1,4 +1,4 @@
 mod community;
 
-#[cfg(feature = "ent")]
+// #[cfg(feature = "ent")]
 mod enterprise;

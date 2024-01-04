@@ -19,28 +19,6 @@ pub fn gen_random_wid() -> String {
     gen_random_id(WORKER_ID_LENGTH)
 }
 
-// #[cfg(feature = "ent")]
-use chrono::{DateTime, Utc};
-
-// #[cfg(feature = "ent")]
-use serde::{
-    de::{Deserializer, IntoDeserializer},
-    Deserialize,
-};
-
-// Used to parse responses from Faktory that look like this:
-// '{"jid":"f7APFzrS2RZi9eaA","state":"unknown","updated_at":""}'
-// #[cfg(feature = "ent")]
-pub fn parse_datetime<'de, D>(value: D) -> Result<Option<DateTime<Utc>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    match Option::<String>::deserialize(value)?.as_deref() {
-        Some("") | None => Ok(None),
-        Some(non_empty) => DateTime::deserialize(non_empty.into_deserializer()).map(Some),
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::collections::HashSet;
