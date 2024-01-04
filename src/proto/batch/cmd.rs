@@ -3,7 +3,7 @@ use crate::{Batch, Error};
 use std::io::Write;
 
 impl FaktoryCommand for Batch {
-    fn issue<W: Write>(&self, w: &mut dyn Write) -> Result<(), Error> {
+    fn issue<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         w.write_all(b"BATCH NEW ")?;
         serde_json::to_writer(&mut *w, self).map_err(Error::Serialization)?;
         Ok(w.write_all(b"\r\n")?)
@@ -21,7 +21,7 @@ impl From<String> for CommitBatch {
 }
 
 impl FaktoryCommand for CommitBatch {
-    fn issue<W: Write>(&self, w: &mut dyn Write) -> Result<(), Error> {
+    fn issue<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         w.write_all(b"BATCH COMMIT ")?;
         w.write_all(self.0.as_bytes())?;
         Ok(w.write_all(b"\r\n")?)
@@ -39,7 +39,7 @@ impl From<String> for GetBatchStatus {
 }
 
 impl FaktoryCommand for GetBatchStatus {
-    fn issue<W: Write>(&self, w: &mut dyn Write) -> Result<(), Error> {
+    fn issue<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         w.write_all(b"BATCH STATUS ")?;
         w.write_all(self.0.as_bytes())?;
         Ok(w.write_all(b"\r\n")?)
