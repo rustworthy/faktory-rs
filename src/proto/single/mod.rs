@@ -7,6 +7,9 @@ mod cmd;
 mod resp;
 mod utils;
 
+#[cfg(feature = "ent")]
+mod ent;
+
 use crate::error::Error;
 
 pub use self::cmd::*;
@@ -146,7 +149,7 @@ pub struct Job {
 }
 
 impl JobBuilder {
-    /// Creates a new instance of [`JobBuilder`].
+    /// Creates a new builder for a [`Job`]
     pub fn new(kind: impl Into<String>) -> JobBuilder {
         JobBuilder {
             kind: Some(kind.into()),
@@ -163,79 +166,11 @@ impl JobBuilder {
         self
     }
 
-    /// Set arbitrary key-value pairs to this job's custom data hash
+    /// Sets arbitrary key-value pairs to this job's custom data hash.
     pub fn add_to_custom_data(&mut self, k: String, v: impl Into<serde_json::Value>) -> &mut Self {
         let custom = self.custom.get_or_insert_with(HashMap::new);
         custom.insert(k, v.into());
         self
-    }
-
-    /// When Faktory should expire this job.
-    ///
-    /// Faktory Enterprise allows for expiring jobs. This is setter for "expires_at"
-    /// field in the job's custom data.
-    /// ```
-    /// use faktory::JobBuilder;
-    /// use chrono::{Duration, Utc};
-    ///
-    /// let _job = JobBuilder::default()
-    ///     .kind("order")
-    ///     .args(vec!["ISBN-13:9781718501850"])
-    ///     .expires_at(Utc::now() + Duration::hours(1))
-    ///     .build()
-    ///     .unwrap();
-    #[cfg(feature = "ent")]
-    pub fn expires_at(&mut self, dt: DateTime<Utc>) -> &mut Self {
-        self.add_to_custom_data(
-            "expires_at".into(),
-            dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
-        )
-    }
-
-    /// In what period of time from now (UTC) the Faktory should expire this job.
-    ///
-    /// Use this setter when you are unwilling to populate the "expires_at" field in custom
-    /// options with some exact date and time, e.g.:
-    /// ```
-    /// use faktory::JobBuilder;
-    /// use chrono::Duration;
-    ///
-    /// let _job = JobBuilder::default()
-    ///     .kind("order")
-    ///     .args(vec!["ISBN-13:9781718501850"])
-    ///     .expires_in(Duration::weeks(1))
-    ///     .build()
-    ///     .unwrap();
-    /// ```
-    #[cfg(feature = "ent")]
-    pub fn expires_in(&mut self, ttl: chrono::Duration) -> &mut Self {
-        self.expires_at(Utc::now() + ttl)
-    }
-
-    /// How long the Faktory will not accept duplicates of this job.
-    ///
-    /// The job will be considered unique for kind-args-queue combination.
-    /// Note that uniqueness is best-effort, rather than a guarantee. Check out
-    /// the Enterprise Faktory docs for details on how scheduling, retries and other
-    /// features live together with 'unique_for'.
-    #[cfg(feature = "ent")]
-    pub fn unique_for(&mut self, secs: usize) -> &mut Self {
-        self.add_to_custom_data("unique_for".into(), secs)
-    }
-
-    /// Remove unique lock for this job right before the job starts executing.
-    #[cfg(feature = "ent")]
-    pub fn unique_until_start(&mut self) -> &mut Self {
-        self.add_to_custom_data("unique_until".into(), "start")
-    }
-
-    /// Do not remove unique lock for this job until it successfully finishes.
-    ///
-    /// The Faktory's default value for "unique_until" is "success". This method
-    /// exists on the JobBuilder for completeness.
-    #[cfg(feature = "ent")]
-    pub fn unique_until_success(&mut self) -> &mut Self {
-        self.add_to_custom_data("unique_until".into(), "success")
     }
 
     /// Builds a new [`Job`] from the parameters of this builder.
@@ -448,13 +383,6 @@ pub fn write_command_and_await_ok<X: BufRead + Write, C: FaktoryCommand>(
 mod test {
     use super::*;
 
-    // Returns date and time string in the format expected by Faktory.
-    // Serializes date and time into a string as per RFC 3338 and ISO 8601
-    // with nanoseconds precision and 'Z' literal for the timzone column.
-    fn to_iso_string(dt: DateTime<Utc>) -> String {
-        dt.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true)
-    }
-
     #[test]
     fn test_job_can_be_created_with_builder() {
         let job_kind = "order";
@@ -512,241 +440,16 @@ mod test {
         assert_ne!(job2.created_at, job3.created_at);
     }
 
-    fn half_stuff() -> JobBuilder {
-        let mut job = JobBuilder::new("order");
-        job.args(vec!["ISBN-13:9781718501850"]);
-        job
-    }
-
     #[test]
     fn test_arbitrary_custom_data_setter() {
-        let exp_at = Utc::now() + chrono::Duration::seconds(300);
-        let exp_at_iso = to_iso_string(exp_at);
-        let job = half_stuff()
-            .add_to_custom_data("expires_at".into(), exp_at_iso.clone())
-            .build();
-        assert_eq!(
-            job.custom.get("expires_at").unwrap(),
-            &serde_json::Value::from(exp_at_iso)
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "ent")]
-    fn test_expiration_feature_for_enterprise_faktory() {
-        let five_min = chrono::Duration::seconds(300);
-        let exp_at = Utc::now() + five_min;
-        let job1 = half_stuff().expires_at(exp_at).build();
-        let stored = job1.custom.get("expires_at").unwrap();
-        assert_eq!(stored, &serde_json::Value::from(to_iso_string(exp_at)));
-
-        let job2 = half_stuff().expires_in(five_min).build();
-        assert!(job2.custom.get("expires_at").is_some());
-    }
-
-    #[test]
-    #[cfg(feature = "ent")]
-    fn test_uniqueness_faeture_for_enterprise_faktory() {
-        let job = half_stuff().unique_for(60).unique_until_start().build();
-        let stored_unique_for = job.custom.get("unique_for").unwrap();
-        let stored_unique_until = job.custom.get("unique_until").unwrap();
-        assert_eq!(stored_unique_for, &serde_json::Value::from(60));
-        assert_eq!(stored_unique_until, &serde_json::Value::from("start"));
-
-        let job = half_stuff().unique_for(60).unique_until_success().build();
-
-        let stored_unique_until = job.custom.get("unique_until").unwrap();
-        assert_eq!(stored_unique_until, &serde_json::Value::from("success"));
-    }
-
-    #[test]
-    #[cfg(feature = "ent")]
-    fn test_same_purpose_setters_applied_simultaneously() {
-        let expires_at1 = Utc::now() + chrono::Duration::seconds(300);
-        let expires_at2 = Utc::now() + chrono::Duration::seconds(300);
-        let job = half_stuff()
-            .unique_for(60)
-            .add_to_custom_data("unique_for".into(), 600)
-            .unique_for(40)
-            .add_to_custom_data("expires_at".into(), to_iso_string(expires_at1))
-            .expires_at(expires_at2)
-            .build();
-        let stored_unique_for = job.custom.get("unique_for").unwrap();
-        assert_eq!(stored_unique_for, &serde_json::Value::from(40));
-        let stored_expires_at = job.custom.get("expires_at").unwrap();
-        assert_eq!(
-            stored_expires_at,
-            &serde_json::Value::from(to_iso_string(expires_at2))
-        )
-    }
-
-    #[test]
-    #[cfg(feature = "ent")]
-    fn test_buid_trackable_job() {
-        let job = JobBuilder::new("thumbnail")
-            .args(vec!["https://provider.io/bucket/key/"])
-            .build_trackable();
-        assert_eq!(job.custom.get("track").unwrap(), 1);
-
-        // the JobBuilder's terminal method 'new_trackable'
-        // will set 'track' to 1 on custom data:
-        let mut custom_data = HashMap::new();
-        custom_data.insert("lib".into(), serde_json::Value::from("sharp@1"));
-        custom_data.insert("track".into(), serde_json::Value::from("whatever"));
-
-        let job = JobBuilder::new("thumbnail")
-            .args(vec!["https://provider.io/bucket/key/"])
-            .custom(custom_data)
-            .add_to_custom_data("track".into(), "2")
-            .add_to_custom_data("quality".into(), 80)
-            .build_trackable();
-
-        // and still 'track:1' ...
-        assert_eq!(job.custom.get("track").unwrap(), 1);
-
-        // ... while the rest of custom data is intact:
-        assert_eq!(
-            job.custom.get("lib").unwrap(),
-            &serde_json::Value::from("sharp@1")
-        );
-        assert_eq!(
-            job.custom.get("quality").unwrap(),
-            &serde_json::Value::from(80)
-        );
-    }
-
-    #[test]
-    #[cfg(feature = "ent")]
-    fn test_progress_update_can_be_created_with_builder() {
-        let tracked = utils::gen_random_jid();
-        let progress1 = ProgressUpdateBuilder::new(&tracked).build();
-
-        assert_eq!(progress1.jid, tracked);
-        assert!(progress1.desc.is_none());
-        assert!(progress1.percent.is_none());
-        assert!(progress1.reserve_until.is_none());
-
-        let progress2 = ProgressUpdate::new(&tracked);
-        assert_eq!(progress1.desc, progress2.desc);
-        assert_eq!(progress1.percent, progress2.percent);
-        assert_eq!(progress1.reserve_until, progress2.reserve_until);
-    }
-
-    #[test]
-    #[cfg(feature = "ent")]
-    fn test_progress_builder_serialized_correctly() {
-        let tracked = utils::gen_random_jid();
-        let extra_time_needed = chrono::Duration::nanoseconds(111_111_111);
-        let extend = Utc::now() + extra_time_needed;
-
-        let progress = ProgressUpdateBuilder::new(&tracked)
-            .desc("Resizing the image...".to_string())
-            .percent(67)
-            .reserve_until(extend.clone())
+        let job = JobBuilder::new("order")
+            .args(vec!["ISBN-13:9781718501850"])
+            .add_to_custom_data("arbitrary_key".into(), "arbitrary_value")
             .build();
 
-        let serialized = serde_json::to_string(&progress).unwrap();
-        assert!(serialized.contains("jid"));
-        assert!(serialized.contains(&tracked));
-
-        assert!(serialized.contains("desc"));
-        assert!(serialized.contains("Resizing the image..."));
-
-        assert!(serialized.contains("percent"));
-        assert!(serialized.contains("67"));
-
-        assert!(serialized.contains("reserve_until"));
-        assert!(serialized.contains(&to_iso_string(extend)));
-
-        let progress = ProgressUpdate::builder(&tracked).build();
-        let serialized = serde_json::to_string(&progress).unwrap();
-
-        assert!(serialized.contains("jid"));
-        assert!(serialized.contains(&tracked));
-
-        assert!(!serialized.contains("percent"));
-        assert!(!serialized.contains("desc"));
-        assert!(!serialized.contains("reserve_until"));
-    }
-
-    #[test]
-    #[cfg(feature = "ent")]
-    fn test_progress_deserialized_correctly() {
-        let raw = b"
-        {
-            \"jid\":\"W8qyVle9vXzUWQOf\",
-            \"updated_at\":\"2023-12-13T21:01:35.244381344Z\",
-            \"state\":\"working\",
-            \"desc\":\"Resizing the image...\",
-            \"percent\":88
-        }";
-
-        let progress = serde_json::from_slice::<Progress>(raw).unwrap();
-        assert_eq!(progress.jid, "W8qyVle9vXzUWQOf");
         assert_eq!(
-            progress.updated_at,
-            Some(
-                DateTime::parse_from_rfc3339("2023-12-13T21:01:35.244381344Z")
-                    .unwrap()
-                    .into()
-            )
+            job.custom.get("arbitrary_key").unwrap(),
+            &serde_json::Value::from("arbitrary_value")
         );
-        assert_eq!(progress.state, "working");
-        assert_eq!(progress.desc, Some("Resizing the image...".into()));
-        assert_eq!(progress.percent, Some(88));
-
-        let raw = b"
-        {
-            \"jid\":\"44124a8gs87722qaa\",
-            \"updated_at\":\"1970-12-13T06:52:27.765011869Z\",
-            \"state\":\"unknown\"
-        }";
-
-        let progress = serde_json::from_slice::<Progress>(raw).unwrap();
-        assert_eq!(progress.jid, "44124a8gs87722qaa");
-        assert_eq!(
-            progress.updated_at,
-            Some(
-                DateTime::parse_from_rfc3339("1970-12-13T06:52:27.765011869Z")
-                    .unwrap()
-                    .into()
-            )
-        );
-        assert_eq!(progress.state, "unknown");
-        assert_eq!(progress.desc, None);
-        assert_eq!(progress.percent, None);
-
-        // empty string for 'updated_at' is fine:
-        let raw = b"
-        {
-            \"jid\":\"44124a8gs87722qaa\",
-            \"updated_at\":\"\",
-            \"state\":\"unknown\"
-        }";
-        let progress = serde_json::from_slice::<Progress>(raw).unwrap();
-        assert_eq!(progress.jid, "44124a8gs87722qaa");
-        assert_eq!(progress.state, "unknown");
-        assert_eq!(progress.updated_at, None);
-
-        // but the field cannot be missing:
-        let raw = b"
-        {
-            \"jid\":\"44124a8gs87722qaa\",
-            \"state\":\"unknown\"
-        }";
-        let error = serde_json::from_slice::<Progress>(raw).unwrap_err();
-        assert!(error.to_string().contains("missing field `updated_at`"));
-
-        // neither can it be anything else rather than string:
-        let raw = b"
-        {
-            \"jid\":\"44124a8gs87722qaa\",
-            \"updated_at\":1,
-            \"state\":\"unknown\"
-        }";
-        let error = serde_json::from_slice::<Progress>(raw).unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("invalid type: integer `1`, expected a string"));
     }
 }
