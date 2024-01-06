@@ -327,7 +327,6 @@ fn ent_unique_job_until_start() {
 #[test]
 fn ent_unique_job_bypass_unique_lock() {
     use faktory::error;
-    use serde_json::Value;
 
     skip_if_not_enterprise!();
 

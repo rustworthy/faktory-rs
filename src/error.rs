@@ -94,7 +94,7 @@ pub enum Protocol {
     },
 
     /// The server reported a unique constraint violation.
-    #[cfg(feature = "ent")]
+    // #[cfg(feature = "ent")]
     #[error("server reported unique constraint violation: {msg}")]
     UniqueConstraintViolation {
         /// The error message given by the server.
@@ -147,7 +147,7 @@ impl Protocol {
         match code {
             Some("ERR") => Protocol::Internal { msg: error },
             Some("MALFORMED") => Protocol::Malformed { desc: error },
-            #[cfg(feature = "ent")]
+            // #[cfg(feature = "ent")]
             Some("NOTUNIQUE") => Protocol::UniqueConstraintViolation { msg: error },
             Some(c) => Protocol::Internal {
                 msg: format!("{} {}", c, error),

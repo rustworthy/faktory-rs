@@ -197,7 +197,7 @@ impl JobBuilder {
     /// ```
     // #[cfg(feature = "ent")]
     pub fn build_trackable(&mut self) -> Job {
-        self.add_to_custom_data("track".into(), 1);
+        self.add_to_custom_data("track", 1);
         self.build()
     }
 }
