@@ -729,8 +729,14 @@ fn test_batches_can_be_nested() {
     assert_eq!(grandchild_status.parent_bid, Some(child_batch_id));
 }
 
-fn simple_job(kind: impl Into<String>, q: impl Into<String>) -> Job {
-    Job::builder(kind).queue(q).build()
+fn some_jobs(
+    kind: impl Into<String> + Clone + 'static,
+    q: impl Into<String> + Clone + 'static,
+    count: usize,
+) -> impl Iterator<Item = Job> {
+    (0..count)
+        .into_iter()
+        .map(move |_| Job::builder(kind.clone()).queue(q.clone()).build())
 }
 
 #[test]
@@ -738,41 +744,43 @@ fn test_committed_batch_cannot_be_reopened_from_outside() {
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
     let mut p = Producer::connect(Some(&url)).unwrap();
-    let j1 = simple_job(
+    let mut t = Tracker::connect(Some(&url)).unwrap();
+    let mut jobs = some_jobs(
         "order",
         "test_committed_batch_cannot_be_reopened_from_outside",
+        5,
     );
-    let j2 = simple_job(
-        "order",
-        "test_committed_batch_cannot_be_reopened_from_outside",
-    );
-    let j3 = simple_job(
-        "order",
-        "test_committed_batch_cannot_be_reopened_from_outside",
-    );
-    let cb_j = simple_job(
-        "after_order",
-        "test_committed_batch_cannot_be_reopened_from_outside",
-    );
-    let b = Batch::builder("Orders processing workload".to_string()).with_complete_callback(cb_j);
+
+    let b = Batch::builder("Orders processing workload".to_string())
+        .with_complete_callback(jobs.next().unwrap());
 
     let mut b = p.start_batch(b).unwrap();
     let bid = b.id().to_string();
-    b.add(j1).unwrap();
-    b.add(j2).unwrap();
+    b.add(jobs.next().unwrap()).unwrap();
+    b.add(jobs.next().unwrap()).unwrap();
 
-    // we can open an uncommitted batch, if we wish:
-    let b = p.open_batch(bid.clone()).unwrap();
+    let st1 = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    eprintln!("st1: {:?}", st1);
+
+    let mut b = p.open_batch(bid.clone()).unwrap();
+
+    let st2 = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    eprintln!("st1: {:?}", st2);
+
     assert_eq!(b.id(), bid);
-
-    // but we commit this batch ...
+    b.add(jobs.next().unwrap()).unwrap();
     b.commit().unwrap();
 
-    // ... and try to re-open it from outside ...
-    let mut b = p.open_batch(bid).unwrap();
+    let st3 = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    eprintln!("st1: {:?}", st3);
 
-    // ... the Fatory server will error back:
-    let err = b.add(j3).unwrap_err();
-    println!("{:?}", err);
-    panic!()
+    // let's open the batch after we've committed it:
+    let mut b = p.open_batch(bid.clone()).unwrap();
+    b.add(jobs.next().unwrap()).unwrap();
+    b.commit().unwrap();
+
+    let st4 = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    eprintln!("st1: {:?}", st4);
+
+    panic!();
 }

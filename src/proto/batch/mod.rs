@@ -194,7 +194,7 @@ impl<'a, S: Read + Write> BatchHandle<'a, S> {
 }
 
 /// Batch status retrieved from Faktory server.
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct BatchStatus {
     // Fields "bid", "created_at", "description", "total", "pending", and "failed"
     // are described in the docs: https://github.com/contribsys/faktory/wiki/Ent-Batches#status
