@@ -21,6 +21,59 @@ pub use cmd::{CommitBatch, GetBatchStatus};
 ///
 /// If you open a batch, but - for some reason - do not commit it within _30 minutes_, it will simply expire
 /// on the Faktory server (which means no callbackes will be fired).
+///
+/// Here is how you can create a simple batch:
+/// ```no_run
+/// # use faktory::Error;
+/// use faktory::{Producer, Job, Batch};
+///
+/// let mut prod = Producer::connect(None)?;
+/// let job1 = Job::builder("image").build();
+/// let job2 = Job::builder("image").build();
+/// let job_cb = Job::builder("clean_up").build();
+///
+/// let batch = Batch::builder("Image resizing workload".to_string()).with_complete_callback(job_cb);
+///
+/// let mut batch = prod.start_batch(batch)?;
+/// batch.add(job1)?;
+/// batch.add(job2)?;
+/// batch.commit()?;
+///
+/// # Ok::<(), Error>(())
+/// ```
+///
+/// Nested batches are also supported:
+/// ```no_run
+/// # use faktory::{Producer, Job, Batch, Error};
+/// # let mut prod = Producer::connect(None)?;
+/// let parent_job1 = Job::builder("stats_build").build();
+/// let parent_job2 = Job::builder("entries_update").build();
+/// let parent_cb = Job::builder("clean_up").build();
+///
+/// let child_job1 = Job::builder("image_recognition").build();
+/// let child_job2 = Job::builder("image_recognition").build();
+/// let child_cb = Job::builder("clean_up").build();
+///
+/// let parent_batch = Batch::builder("Image recognition and analysis workload".to_string()).with_complete_callback(parent_cb);
+/// let child_batch = Batch::builder("Image recognition workload".to_string()).with_success_callback(child_cb);
+///
+/// let mut parent = prod.start_batch(parent_batch)?;
+/// parent.add(parent_job1)?;
+/// parent.add(parent_job2)?;
+/// let mut child = parent.start_batch(child_batch)?;
+/// child.add(child_job1)?;
+/// child.add(child_job2)?;
+///
+/// child.commit()?;
+/// parent.commit()?;
+///
+/// # Ok::<(), Error>(())
+/// ```
+///
+/// In the example above, there is a single level nesting, but you can nest those batches as deep as you wish,
+/// effectively building a pipeline this way, since the Faktory guarantees that callback jobs will not be queued unless
+/// the batch gets committed.
+///
 #[derive(Serialize, Debug, Builder)]
 #[builder(
     custom_constructor,
