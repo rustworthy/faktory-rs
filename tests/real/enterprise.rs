@@ -729,8 +729,8 @@ fn test_batches_can_be_nested() {
     assert_eq!(grandchild_status.parent_bid, Some(child_batch_id));
 }
 
-fn job_of_type(ty: impl Into<String>) -> Job {
-    Job::builder(ty).build()
+fn simple_job(kind: impl Into<String>, q: impl Into<String>) -> Job {
+    Job::builder(kind).queue(q).build()
 }
 
 #[test]
@@ -738,10 +738,22 @@ fn test_committed_batch_cannot_be_reopened_from_outside() {
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
     let mut p = Producer::connect(Some(&url)).unwrap();
-    let j1 = job_of_type("order");
-    let j2 = job_of_type("order");
-    let j3 = job_of_type("order");
-    let cb_j = job_of_type("after_order");
+    let j1 = simple_job(
+        "order",
+        "test_committed_batch_cannot_be_reopened_from_outside",
+    );
+    let j2 = simple_job(
+        "order",
+        "test_committed_batch_cannot_be_reopened_from_outside",
+    );
+    let j3 = simple_job(
+        "order",
+        "test_committed_batch_cannot_be_reopened_from_outside",
+    );
+    let cb_j = simple_job(
+        "after_order",
+        "test_committed_batch_cannot_be_reopened_from_outside",
+    );
     let b = Batch::builder("Orders processing workload".to_string()).with_complete_callback(cb_j);
 
     let mut b = p.start_batch(b).unwrap();
@@ -749,15 +761,17 @@ fn test_committed_batch_cannot_be_reopened_from_outside() {
     b.add(j1).unwrap();
     b.add(j2).unwrap();
 
-    // trying to open an uncommitted batch:
+    // we can open an uncommitted batch, if we wish:
     let b = p.open_batch(bid.clone()).unwrap();
-    eprintln!("uncommitted re-opned batch id: {:?}", b.id());
+    assert_eq!(b.id(), bid);
 
-    // committing this batch ...
+    // but we commit this batch ...
     b.commit().unwrap();
 
-    // ... and trying to re-open it from outside:
+    // ... and try to re-open it from outside ...
     let mut b = p.open_batch(bid).unwrap();
+
+    // ... the Fatory server will error back:
     let err = b.add(j3).unwrap_err();
     println!("{:?}", err);
     panic!()
