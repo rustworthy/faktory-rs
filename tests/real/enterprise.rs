@@ -740,7 +740,7 @@ fn some_jobs(
 }
 
 #[test]
-fn test_committed_batch_cannot_be_reopened_from_outside() {
+fn test_can_open_batch_and_add_more_jobs_before_comiitting_again() {
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
     let mut p = Producer::connect(Some(&url)).unwrap();
@@ -748,39 +748,98 @@ fn test_committed_batch_cannot_be_reopened_from_outside() {
     let mut jobs = some_jobs(
         "order",
         "test_committed_batch_cannot_be_reopened_from_outside",
-        5,
+        4,
+    );
+    let mut callbacks = some_jobs(
+        "order_clean_up",
+        "test_committed_batch_cannot_be_reopened_from_outside__CALLBACKs",
+        1,
     );
 
     let b = Batch::builder("Orders processing workload".to_string())
-        .with_complete_callback(jobs.next().unwrap());
+        .with_success_callback(callbacks.next().unwrap());
 
     let mut b = p.start_batch(b).unwrap();
     let bid = b.id().to_string();
-    b.add(jobs.next().unwrap()).unwrap();
-    b.add(jobs.next().unwrap()).unwrap();
+    b.add(jobs.next().unwrap()).unwrap(); // 1 job
+    b.add(jobs.next().unwrap()).unwrap(); // 2 jobs
 
-    let st1 = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    eprintln!("st1: {:?}", st1);
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.total, 2);
+    assert_eq!(status.pending, 2);
 
+    // opening an uncommitted batch:
     let mut b = p.open_batch(bid.clone()).unwrap();
-
-    let st2 = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    eprintln!("st1: {:?}", st2);
-
     assert_eq!(b.id(), bid);
-    b.add(jobs.next().unwrap()).unwrap();
+    b.add(jobs.next().unwrap()).unwrap(); // 3 jobs
     b.commit().unwrap();
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.total, 3);
+    assert_eq!(status.pending, 3);
 
-    let st3 = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    eprintln!("st1: {:?}", st3);
-
-    // let's open the batch after we've committed it:
+    // opening an already committed batch:
     let mut b = p.open_batch(bid.clone()).unwrap();
-    b.add(jobs.next().unwrap()).unwrap();
+    b.add(jobs.next().unwrap()).unwrap(); // 4 jobs
     b.commit().unwrap();
 
-    let st4 = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    eprintln!("st1: {:?}", st4);
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.total, 4);
+    assert_eq!(status.pending, 4);
 
-    panic!();
+    // let's now consume those jobs:
+    let mut c = ConsumerBuilder::default();
+    c.register("order", move |_job| -> io::Result<_> { Ok(()) });
+    let mut c = c.connect(Some(&url)).unwrap();
+
+    let _: Vec<_> = (0..3) // let's consume 3 jobs
+        .map(|_| {
+            assert!(c
+                .run_one(0, &["test_committed_batch_cannot_be_reopened_from_outside"])
+                .unwrap())
+        })
+        .collect();
+
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.total, 4);
+    assert_eq!(status.pending, 1);
+    assert_eq!(status.failed, 0);
+
+    // now let's re-open the batch once again:
+    let b = p.open_batch(bid.clone()).unwrap();
+
+    // and commit the last pending job:
+    assert!(c
+        .run_one(0, &["test_committed_batch_cannot_be_reopened_from_outside"])
+        .unwrap());
+
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.total, 4);
+    assert_eq!(status.pending, 0);
+    assert_eq!(status.failed, 0);
+
+    // let's check that were no callbacks in the success queue:
+    let empty = !c
+        .run_one(
+            0,
+            &["test_committed_batch_cannot_be_reopened_from_outside__CALLBACKs"],
+        )
+        .unwrap();
+    assert!(empty);
+
+    // now let's commit the batch:
+    b.commit().unwrap();
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.complete_state, "1"); // success callback has been enqueued
+
+    // let's consume from the callbacks queue:
+    let had_one = c
+        .run_one(
+            0,
+            &["test_committed_batch_cannot_be_reopened_from_outside__CALLBACKs"],
+        )
+        .unwrap();
+    assert!(had_one);
+
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.complete_state, "2"); // callback executed
 }
