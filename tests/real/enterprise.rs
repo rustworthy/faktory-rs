@@ -62,13 +62,13 @@ fn ent_expiring_job() {
         .expires_at(chrono::Utc::now() + ttl)
         .build();
 
-    // enquere and then fetch job2, but after ttl:
+    // enqueue and then fetch job2, but after ttl:
     producer.enqueue(job2).unwrap();
     thread::sleep(time::Duration::from_secs(job_ttl_secs * 2));
     let had_job = consumer.run_one(0, &["default"]).unwrap();
 
     // For the non-enterprise edition of Faktory, this assertion will
-    // fail, which should be take into account when running the test suite on CI.
+    // fail, which should be taken into account when running the test suite on CI.
     assert!(!had_job);
 }
 
@@ -132,18 +132,20 @@ fn ent_unique_job() {
         .build();
     // ... so the server will respond accordingly:
     let res = producer.enqueue(job2).unwrap_err();
-    if let error::Error::Protocol(error::Protocol::Internal { msg }) = res {
-        assert_eq!(msg, "NOTUNIQUE Job not unique");
+    if let error::Error::Protocol(error::Protocol::UniqueConstraintViolation { msg }) = res {
+        assert_eq!(msg, "Job not unique");
     } else {
         panic!("Expected protocol error.")
     }
 
+    // Let's now consume the job which is 'holding' a unique lock:
     let had_job = consumer.run_one(0, &[queue_name]).unwrap();
     assert!(had_job);
-    let had_another_one = consumer.run_one(0, &[queue_name]).unwrap();
 
-    // For the non-enterprise edition of Faktory, this assertion WILL FAIL:
-    assert!(!had_another_one);
+    // And check that the queue is really empty (`job2` from above
+    // has not been queued indeed):
+    let queue_is_empty = !consumer.run_one(0, &[queue_name]).unwrap();
+    assert!(queue_is_empty);
 
     // Now let's repeat the latter case, but providing different args to job2:
     let job1 = JobBuilder::new(job_type)
@@ -237,25 +239,25 @@ fn ent_unique_job_until_success() {
 
     // as a result:
     let res = producer_b.enqueue(job).unwrap_err();
-    if let error::Error::Protocol(error::Protocol::Internal { msg }) = res {
-        assert_eq!(msg, "NOTUNIQUE Job not unique");
+    if let error::Error::Protocol(error::Protocol::UniqueConstraintViolation { msg }) = res {
+        assert_eq!(msg, "Job not unique");
     } else {
         panic!("Expected protocol error.")
     }
 
     handle.join().expect("should join successfully");
 
-    // Not that the job submitted in a spawned thread has been successfully executed
+    // Now that the job submitted in a spawned thread has been successfully executed
     // (with ACK sent to server), the producer 'B' can push another one:
-    assert!(producer_b
+    producer_b
         .enqueue(
             JobBuilder::new(job_type)
                 .args(vec![difficulty_level])
                 .queue(queue_name)
                 .unique_for(unique_for)
-                .build()
+                .build(),
         )
-        .is_ok());
+        .unwrap();
 }
 
 #[test]
@@ -309,17 +311,58 @@ fn ent_unique_job_until_start() {
 
     // the unique lock has been released by this time, so the job is enqueued successfully:
     let mut producer_b = Producer::connect(Some(&url)).unwrap();
-    assert!(producer_b
+    producer_b
         .enqueue(
             JobBuilder::new(job_type)
                 .args(vec![difficulty_level])
                 .queue(queue_name)
                 .unique_for(unique_for)
-                .build()
+                .build(),
         )
-        .is_ok());
+        .unwrap();
 
     handle.join().expect("should join successfully");
+}
+
+#[test]
+fn ent_unique_job_bypass_unique_lock() {
+    use faktory::error;
+    use serde_json::Value;
+
+    skip_if_not_enterprise!();
+
+    let url = learn_faktory_url();
+
+    let mut producer = Producer::connect(Some(&url)).unwrap();
+
+    let job1 = Job::builder("order")
+        .queue("ent_unique_job_bypass_unique_lock")
+        .unique_for(60)
+        .build();
+
+    // Now the following job is _technically_ a 'duplicate', BUT if the `unique_for` value is not set,
+    // the uniqueness lock will be bypassed on the server. This special case is mentioned in the docs:
+    // https://github.com/contribsys/faktory/wiki/Ent-Unique-Jobs#bypassing-uniqueness
+    let job2 = Job::builder("order") // same jobtype and args (args are just not set)
+        .queue("ent_unique_job_bypass_unique_lock") // same queue
+        .build(); // NB: `unique_for` not set
+
+    producer.enqueue(job1).unwrap();
+    producer.enqueue(job2).unwrap(); // bypassing the lock!
+
+    // This _is_ a 'duplicate'.
+    let job3 = Job::builder("order")
+        .queue("ent_unique_job_bypass_unique_lock")
+        .unique_for(60) // NB
+        .build();
+
+    let res = producer.enqueue(job3).unwrap_err(); // NOT bypassing the lock!
+
+    if let error::Error::Protocol(error::Protocol::UniqueConstraintViolation { msg }) = res {
+        assert_eq!(msg, "Job not unique");
+    } else {
+        panic!("Expected protocol error.")
+    }
 }
 
 #[test]
