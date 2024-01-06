@@ -45,3 +45,21 @@ impl FaktoryCommand for GetBatchStatus {
         Ok(w.write_all(b"\r\n")?)
     }
 }
+
+// ----------------------------------------------
+
+pub struct OpenBatch(String);
+
+impl From<String> for OpenBatch {
+    fn from(value: String) -> Self {
+        OpenBatch(value)
+    }
+}
+
+impl FaktoryCommand for OpenBatch {
+    fn issue<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(b"BATCH OPEN ")?;
+        w.write_all(self.0.as_bytes())?;
+        Ok(w.write_all(b"\r\n")?)
+    }
+}

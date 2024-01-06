@@ -23,7 +23,9 @@ pub use self::single::gen_random_jid;
 // #[cfg(feature = "ent")]
 mod batch;
 // #[cfg(feature = "ent")]
-pub use batch::{Batch, BatchBuilder, BatchHandle, BatchStatus, CommitBatch, GetBatchStatus};
+pub use batch::{
+    Batch, BatchBuilder, BatchHandle, BatchStatus, CommitBatch, GetBatchStatus, OpenBatch,
+};
 // #[cfg(feature = "ent")]
 pub use self::single::ent::{Progress, ProgressUpdate, ProgressUpdateBuilder, Track};
 

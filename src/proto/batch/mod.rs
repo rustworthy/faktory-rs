@@ -7,7 +7,7 @@ use crate::{Error, Job, Producer};
 
 mod cmd;
 
-pub use cmd::{CommitBatch, GetBatchStatus};
+pub use cmd::{CommitBatch, GetBatchStatus, OpenBatch};
 
 /// Batch of jobs.
 ///

@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::proto::{
-    self, parse_provided_or_from_env, BatchHandle, Client, CommitBatch, Info, Job, Push,
+    self, parse_provided_or_from_env, BatchHandle, Client, CommitBatch, Info, Job, OpenBatch, Push,
     QueueAction, QueueControl,
 };
 
@@ -136,6 +136,12 @@ impl<S: Read + Write> Producer<S> {
     /// Initiate a new batch of jobs.
     pub fn start_batch(&mut self, batch: Batch) -> Result<BatchHandle<'_, S>, Error> {
         let bid = self.c.issue(&batch)?.read_bid()?;
+        Ok(BatchHandle::new(bid, self))
+    }
+
+    /// Open an already existing batch of jobs.
+    pub fn open_batch(&mut self, bid: String) -> Result<BatchHandle<'_, S>, Error> {
+        let bid = self.c.issue(&OpenBatch::from(bid))?.read_bid()?;
         Ok(BatchHandle::new(bid, self))
     }
 
