@@ -762,6 +762,7 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
     let mut p = Producer::connect(Some(&url)).unwrap();
     let mut c = ConsumerBuilder::default();
     c.register("order", move |_job| -> io::Result<_> { Ok(()) });
+    c.register("order_clean_up", move |_job| -> io::Result<_> { Ok(()) });
     let mut c = c.connect(Some(&url)).unwrap();
     let mut t = Tracker::connect(Some(&url)).unwrap();
 
