@@ -15,6 +15,20 @@ macro_rules! skip_if_not_enterprise {
     };
 }
 
+macro_rules! assert_had_one {
+    ($c:expr, $q:expr) => {
+        let had_one_job = $c.run_one(0, &[$q]).unwrap();
+        assert!(had_one_job);
+    };
+}
+
+macro_rules! assert_is_empty {
+    ($c:expr, $q:expr) => {
+        let had_one_job = $c.run_one(0, &[$q]).unwrap();
+        assert!(!had_one_job);
+    };
+}
+
 fn learn_faktory_url() -> String {
     let url = std::env::var_os("FAKTORY_URL").expect(
         "Enterprise Faktory should be running for this test, and 'FAKTORY_URL' environment variable should be provided",
@@ -740,19 +754,103 @@ fn some_jobs(
 }
 
 #[test]
-fn test_can_open_batch_and_add_more_jobs_before_comiitting_again() {
+fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
+    skip_if_not_enterprise!();
+    let url = learn_faktory_url();
+
+    // prepare a producer, a consumer of 'order' jobs, and a tracker:
+    let mut p = Producer::connect(Some(&url)).unwrap();
+    let mut c = ConsumerBuilder::default();
+    c.register("order", move |_job| -> io::Result<_> { Ok(()) });
+    let mut c = c.connect(Some(&url)).unwrap();
+    let mut t = Tracker::connect(Some(&url)).unwrap();
+
+    let mut jobs = some_jobs(
+        "order",
+        "test_callback_will_not_be_queued_unless_batch_gets_committed",
+        3,
+    );
+    let mut callbacks = some_jobs(
+        "order_clean_up",
+        "test_callback_will_not_be_queued_unless_batch_gets_committed__CALLBACKs",
+        1,
+    );
+
+    // start a 'batch':
+    let mut b = p
+        .start_batch(
+            Batch::builder("Orders processing workload".to_string())
+                .with_success_callback(callbacks.next().unwrap()),
+        )
+        .unwrap();
+    let bid = b.id().to_string();
+
+    // push 3 jobs onto this batch, but DO NOT commit the batch:
+    for _ in 0..3 {
+        b.add(jobs.next().unwrap()).unwrap();
+    }
+
+    // check this batch's status:
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.total, 3);
+    assert_eq!(status.pending, 3);
+    assert_eq!(status.success_state, ""); // has not been queued;
+
+    // consume those 3 jobs successfully;
+    for _ in 0..3 {
+        assert_had_one!(
+            &mut c,
+            "test_callback_will_not_be_queued_unless_batch_gets_committed"
+        );
+    }
+
+    // verify the queue is drained:
+    assert_is_empty!(
+        &mut c,
+        "test_callback_will_not_be_queued_unless_batch_gets_committed"
+    );
+
+    // check this batch's status again:
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.total, 3);
+    assert_eq!(status.pending, 0);
+    assert_eq!(status.failed, 0);
+    assert_eq!(status.success_state, ""); // not just yet;
+
+    // to double-check, let's assert the success callbacks queue is empty:
+    assert_is_empty!(
+        &mut c,
+        "test_callback_will_not_be_queued_unless_batch_gets_committed__CALLBACKs"
+    );
+
+    // now let's COMMIT the batch ...
+    b.commit().unwrap();
+
+    // ... and check batch status:
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.success_state, "1"); // callback has been queued;
+
+    // finally, let's consume from the success callbacks queue ...
+    assert_had_one!(
+        &mut c,
+        "test_callback_will_not_be_queued_unless_batch_gets_committed__CALLBACKs"
+    );
+
+    // ... and see the final status:
+    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(status.success_state, "2"); // callback successfully executed;
+}
+
+#[test]
+fn test_can_open_batch_and_add_more_jobs() {
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
     let mut p = Producer::connect(Some(&url)).unwrap();
     let mut t = Tracker::connect(Some(&url)).unwrap();
-    let mut jobs = some_jobs(
-        "order",
-        "test_committed_batch_cannot_be_reopened_from_outside",
-        4,
-    );
+    let mut jobs = some_jobs("order", "test_can_open_batch_and_add_more_jobs", 4);
     let mut callbacks = some_jobs(
         "order_clean_up",
-        "test_committed_batch_cannot_be_reopened_from_outside__CALLBACKs",
+        "test_can_open_batch_and_add_more_jobs__CALLBACKs",
         1,
     );
 
@@ -785,61 +883,4 @@ fn test_can_open_batch_and_add_more_jobs_before_comiitting_again() {
     let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
     assert_eq!(status.total, 4);
     assert_eq!(status.pending, 4);
-
-    // let's now consume those jobs:
-    let mut c = ConsumerBuilder::default();
-    c.register("order", move |_job| -> io::Result<_> { Ok(()) });
-    let mut c = c.connect(Some(&url)).unwrap();
-
-    let _: Vec<_> = (0..3) // let's consume 3 jobs
-        .map(|_| {
-            assert!(c
-                .run_one(0, &["test_committed_batch_cannot_be_reopened_from_outside"])
-                .unwrap())
-        })
-        .collect();
-
-    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    assert_eq!(status.total, 4);
-    assert_eq!(status.pending, 1);
-    assert_eq!(status.failed, 0);
-
-    // now let's re-open the batch once again:
-    let b = p.open_batch(bid.clone()).unwrap();
-
-    // and commit the last pending job:
-    assert!(c
-        .run_one(0, &["test_committed_batch_cannot_be_reopened_from_outside"])
-        .unwrap());
-
-    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    assert_eq!(status.total, 4);
-    assert_eq!(status.pending, 0);
-    assert_eq!(status.failed, 0);
-
-    // let's check that were no callbacks in the success queue:
-    let empty = !c
-        .run_one(
-            0,
-            &["test_committed_batch_cannot_be_reopened_from_outside__CALLBACKs"],
-        )
-        .unwrap();
-    assert!(empty);
-
-    // now let's commit the batch:
-    b.commit().unwrap();
-    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    assert_eq!(status.complete_state, "1"); // success callback has been enqueued
-
-    // let's consume from the callbacks queue:
-    let had_one = c
-        .run_one(
-            0,
-            &["test_committed_batch_cannot_be_reopened_from_outside__CALLBACKs"],
-        )
-        .unwrap();
-    assert!(had_one);
-
-    let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    assert_eq!(status.complete_state, "2"); // callback executed
 }
