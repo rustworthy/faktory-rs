@@ -5,6 +5,8 @@ use serde::{
     Deserialize,
 };
 
+use crate::{Error, JobBuilder};
+
 // Used to parse responses from Faktory that look like this:
 // '{"jid":"f7APFzrS2RZi9eaA","state":"unknown","updated_at":""}'
 fn parse_datetime<'de, D>(value: D) -> Result<Option<DateTime<Utc>>, D::Error>
@@ -16,7 +18,6 @@ where
         Some(non_empty) => DateTime::deserialize(non_empty.into_deserializer()).map(Some),
     }
 }
-use crate::{Error, JobBuilder};
 
 impl JobBuilder {
     /// When Faktory should expire this job.
