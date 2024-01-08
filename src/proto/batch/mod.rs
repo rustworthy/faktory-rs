@@ -225,13 +225,13 @@ pub struct BatchStatus {
     ///
     /// See [complete](struct.Batch.html#structfield.complete).
     #[serde(rename = "complete_st")]
-    pub complete_state: String,
+    pub complete_callback_state: String,
 
     /// State of the `success` callback.
     ///
     /// See [success](struct.Batch.html#structfield.success).
     #[serde(rename = "success_st")]
-    pub success_state: String,
+    pub success_callback_state: String,
 }
 
 #[cfg(test)]

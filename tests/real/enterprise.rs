@@ -438,7 +438,6 @@ fn test_tracker_can_send_and_retrieve_job_execution_progress() {
         assert!(result.updated_at.is_some());
         assert_eq!(result.desc, Some("Still processing...".to_owned()));
         assert_eq!(result.percent, Some(32));
-
         // considering the job done
         Ok(eprintln!("{:?}", job))
     });
@@ -446,7 +445,7 @@ fn test_tracker_can_send_and_retrieve_job_execution_progress() {
     let mut c = c
         .connect(Some(&url))
         .expect("Successfully ran a handshake with 'Faktory'");
-    assert_had_one!(&mut c, "");
+    assert_had_one!(&mut c, "test_tracker_can_send_progress_update");
 
     let result = t
         .lock()
@@ -555,8 +554,8 @@ fn test_batch_of_jobs_can_be_initiated() {
     assert_eq!(s.failed, 0);
     // Docs do not mention it, but the golang client does:
     // https://github.com/contribsys/faktory/blob/main/client/batch.go#L17-L19
-    assert_eq!(s.success_state, ""); // we did not even provide the 'success' callback
-    assert_eq!(s.complete_state, ""); // the 'complete' callback is pending
+    assert_eq!(s.success_callback_state, ""); // we did not even provide the 'success' callback
+    assert_eq!(s.complete_callback_state, ""); // the 'complete' callback is pending
 
     // consume and execute job 1 ...
     assert_had_one!(&mut c, "test_batch_of_jobs_can_be_initiated");
@@ -605,7 +604,7 @@ fn test_batch_of_jobs_can_be_initiated() {
     assert_eq!(s.total, 3);
     assert_eq!(s.pending, 0);
     assert_eq!(s.failed, 0);
-    assert_eq!(s.complete_state, "1"); // callback has been enqueued!!
+    assert_eq!(s.complete_callback_state, "1"); // callback has been enqueued!!
 
     // let's now successfully consume from the "callback" queue:
     assert_had_one!(&mut c, "test_batch_of_jobs_can_be_initiated__CALLBACKs");
@@ -617,7 +616,7 @@ fn test_batch_of_jobs_can_be_initiated() {
         .expect("...and it's not none");
 
     // this is because we have just consumed and executed 2 of 3 jobs:
-    assert_eq!(s.complete_state, "2"); // means calledback successfully executed
+    assert_eq!(s.complete_callback_state, "2"); // means calledback successfully executed
 }
 
 #[test]
@@ -757,7 +756,7 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
     let s = t.get_batch_status(bid.clone()).unwrap().unwrap();
     assert_eq!(s.total, 3);
     assert_eq!(s.pending, 3);
-    assert_eq!(s.success_state, ""); // has not been queued;
+    assert_eq!(s.success_callback_state, ""); // has not been queued;
 
     // consume those 3 jobs successfully;
     for _ in 0..3 {
@@ -778,7 +777,7 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
     assert_eq!(s.total, 3);
     assert_eq!(s.pending, 0);
     assert_eq!(s.failed, 0);
-    assert_eq!(s.success_state, ""); // not just yet;
+    assert_eq!(s.success_callback_state, ""); // not just yet;
 
     // to double-check, let's assert the success callbacks queue is empty:
     assert_is_empty!(
@@ -791,7 +790,7 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
 
     // ... and check batch status:
     let s = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    assert_eq!(s.success_state, "1"); // callback has been queued;
+    assert_eq!(s.success_callback_state, "1"); // callback has been queued;
 
     // finally, let's consume from the success callbacks queue ...
     assert_had_one!(
@@ -801,7 +800,7 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
 
     // ... and see the final status:
     let s = t.get_batch_status(bid.clone()).unwrap().unwrap();
-    assert_eq!(s.success_state, "2"); // callback successfully executed;
+    assert_eq!(s.success_callback_state, "2"); // callback successfully executed;
 }
 
 #[test]
