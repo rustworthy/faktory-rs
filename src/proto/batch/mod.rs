@@ -74,6 +74,28 @@ pub use cmd::{CommitBatch, GetBatchStatus, OpenBatch};
 /// effectively building a pipeline this way, since the Faktory guarantees that callback jobs will not be queued unless
 /// the batch gets committed.
 ///
+/// You can retieve the batch status using a [`tracker`](struct.Tracker.html):
+/// ```no_run
+/// # use faktory::Error;
+/// # use faktory::{Producer, Job, Batch, Tracker};
+/// let mut prod = Producer::connect(None)?;
+/// let job = Job::builder("image").build();
+/// let cb_job = Job::builder("clean_up").build();
+/// let b = Batch::builder("Description...".to_string()).with_complete_callback(cb_job);
+///
+/// let mut b = prod.start_batch(b)?;
+/// let bid = b.id();
+/// batch.add(job)?;
+/// b.commit()?;
+///
+/// let mut t = Tracker::connect(None).unwrap();
+/// let s = t.get_batch_status(bid).unwrap().unwrap();
+/// assert_eq!(s.total, 1);
+/// assert_eq!(s.pending, 1);
+/// assert_eq!(s.description, Some("Description...".into()));
+/// assert_eq!(s.complete_callback_state, ""); // has not been queued;
+/// # Ok::<(), Error>(())
+/// ```
 #[derive(Serialize, Debug, Builder)]
 #[builder(
     custom_constructor,
