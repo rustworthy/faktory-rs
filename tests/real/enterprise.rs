@@ -807,6 +807,8 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
 
 #[test]
 fn test_callback_will_be_queue_upon_commit_even_if_batch_is_empty() {
+    use std::{thread, time};
+
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
     let mut p = Producer::connect(Some(&url)).unwrap();
@@ -830,6 +832,9 @@ fn test_callback_will_be_queue_upon_commit_even_if_batch_is_empty() {
     assert_eq!(s.complete_callback_state, ""); // not queued;
 
     b.commit().unwrap();
+
+    // let's give the Faktory server some time:
+    thread::sleep(time::Duration::from_secs(2));
 
     let s = t.get_batch_status(bid).unwrap().unwrap();
     assert_eq!(s.total, 0); // again, there are no jobs in the batch ...
