@@ -804,6 +804,31 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
 }
 
 #[test]
+fn test_callback_will_be_queue_upon_commit_even_if_batch_empty() {
+    skip_if_not_enterprise!();
+    let url = learn_faktory_url();
+    let mut p = Producer::connect(Some(&url)).unwrap();
+    let mut t = Tracker::connect(Some(&url)).unwrap();
+    let b = p
+        .start_batch(
+            Batch::builder("Orders processing workload".to_string())
+                .with_success_callback(Job::builder("callback_jobtype").build()),
+        )
+        .unwrap();
+    let bid = b.id().to_owned();
+
+    let s = t.get_batch_status(bid.clone()).unwrap().unwrap();
+    assert_eq!(s.total, 0); // no jobs in the batch;
+    assert_eq!(s.success_callback_state, ""); // has not been queued;
+
+    b.commit().unwrap();
+
+    let s = t.get_batch_status(bid).unwrap().unwrap();
+    assert_eq!(s.total, 0); // again, there are no jobs in the batch ...
+    assert_eq!(s.success_callback_state, "1"); // ... but the callback has been queued
+}
+
+#[test]
 fn test_can_open_batch_and_add_more_jobs() {
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
@@ -832,15 +857,26 @@ fn test_can_open_batch_and_add_more_jobs() {
     let mut b = p.open_batch(bid.clone()).unwrap();
     assert_eq!(b.id(), bid);
     b.add(jobs.next().unwrap()).unwrap(); // 3 jobs
-    b.commit().unwrap();
+
+    b.commit().unwrap(); // committig the batch
+
     let status = t.get_batch_status(bid.clone()).unwrap().unwrap();
     assert_eq!(status.total, 3);
     assert_eq!(status.pending, 3);
 
-    // opening an already committed batch:
+    // From the docs:
+    // """Note that, once committed, only a job within the batch may reopen it.
+    // Faktory will return an error if you dynamically add jobs from "outside" the batch;
+    // this is to prevent a race condition between callbacks firing and an outsider adding more jobs."""
+    // Ref: https://github.com/contribsys/faktory/wiki/Ent-Batches#batch-open-bid (Jan 10, 2024)
+
+    // Let's try to open an already committed batch:
     let mut b = p.open_batch(bid.clone()).unwrap();
+    assert_eq!(b.id(), bid);
     b.add(jobs.next().unwrap()).unwrap(); // 4 jobs
     b.commit().unwrap();
+
+    // So, the server accepted the job instead of erroring back.
 
     let s = t.get_batch_status(bid.clone()).unwrap().unwrap();
     assert_eq!(s.total, 4);
