@@ -84,8 +84,8 @@ pub use cmd::{CommitBatch, GetBatchStatus, OpenBatch};
 /// let b = Batch::builder("Description...".to_string()).with_complete_callback(cb_job);
 ///
 /// let mut b = prod.start_batch(b)?;
-/// let bid = b.id();
-/// batch.add(job)?;
+/// let bid = b.id().to_string();
+/// b.add(job)?;
 /// b.commit()?;
 ///
 /// let mut t = Tracker::connect(None).unwrap();

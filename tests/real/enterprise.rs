@@ -58,19 +58,21 @@ fn ent_expiring_job() {
     let ttl = chrono::Duration::seconds(job_ttl_secs as i64);
     let job1 = JobBuilder::new("AnExpiringJob")
         .args(vec!["ISBN-13:9781718501850"])
+        .queue("ent_expiring_job")
         .expires_at(chrono::Utc::now() + ttl)
         .build();
 
     // enqueue and fetch immediately job1:
     p.enqueue(job1).unwrap();
-    assert_had_one!(&mut c, "default");
+    assert_had_one!(&mut c, "ent_expiring_job");
 
     // check that the queue is drained:
-    assert_is_empty!(&mut c, "default");
+    assert_is_empty!(&mut c, "ent_expiring_job");
 
     // prepare another one:
     let job2 = JobBuilder::new("AnExpiringJob")
         .args(vec!["ISBN-13:9781718501850"])
+        .queue("ent_expiring_job")
         .expires_at(chrono::Utc::now() + ttl)
         .build();
 
@@ -80,7 +82,7 @@ fn ent_expiring_job() {
 
     // For the non-enterprise edition of Faktory, this assertion will
     // fail, which should be taken into account when running the test suite on CI.
-    assert_is_empty!(&mut c, "default");
+    assert_is_empty!(&mut c, "ent_expiring_job");
 }
 
 #[test]
@@ -804,28 +806,35 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
 }
 
 #[test]
-fn test_callback_will_be_queue_upon_commit_even_if_batch_empty() {
+fn test_callback_will_be_queue_upon_commit_even_if_batch_is_empty() {
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
     let mut p = Producer::connect(Some(&url)).unwrap();
     let mut t = Tracker::connect(Some(&url)).unwrap();
+    let mut callbacks = some_jobs(
+        "callback_jobtype",
+        "test_callback_will_be_queue_upon_commit_even_if_batch_is_empty",
+        2,
+    );
     let b = p
         .start_batch(
             Batch::builder("Orders processing workload".to_string())
-                .with_success_callback(Job::builder("callback_jobtype").build()),
+                .with_callbacks(callbacks.next().unwrap(), callbacks.next().unwrap()),
         )
         .unwrap();
     let bid = b.id().to_owned();
 
     let s = t.get_batch_status(bid.clone()).unwrap().unwrap();
     assert_eq!(s.total, 0); // no jobs in the batch;
-    assert_eq!(s.success_callback_state, ""); // has not been queued;
+    assert_eq!(s.success_callback_state, ""); // not queued;
+    assert_eq!(s.complete_callback_state, ""); // not queued;
 
     b.commit().unwrap();
 
     let s = t.get_batch_status(bid).unwrap().unwrap();
     assert_eq!(s.total, 0); // again, there are no jobs in the batch ...
-    assert_eq!(s.success_callback_state, "1"); // ... but the callback has been queued
+    assert_eq!(s.success_callback_state, "1"); // ... but the 'success' callback has been queued ...
+    assert_eq!(s.complete_callback_state, "1"); // ... as well as the 'complete' one
 }
 
 #[test]
