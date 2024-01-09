@@ -210,6 +210,11 @@ impl<'a, S: Read + Write> BatchHandle<'a, S> {
     }
 
     /// Commit this batch.
+    ///
+    /// The Faktory server will not queue any callbacks, unless the batch is committed.
+    /// Committing an empty batch will make the server queue the callback(s) right away.
+    /// Once committed, the batch can still be re-opened with [open_batch](struct.Producer.html#method.open_batch),
+    /// and extra jobs can be added to it.
     pub fn commit(self) -> Result<(), Error> {
         self.prod.commit_batch(self.bid)
     }
