@@ -974,5 +974,19 @@ fn test_batch_can_be_reopened_add_extra_jobs_and_batches_added() {
     assert_eq!(s.complete_callback_state, "1"); // again, it has been enqueud ...
     assert_eq!(s.pending, 2); // ... though there are pending jobs
     assert_eq!(s.total, 2);
+
+    // Subtest 3 result:
+    // We were able to add more jobs to the batch for which the Faktory server had already
+    // queued the callback.
     // ############################## END OF SUBTEST 3 #####################################
+
+    // ############################## OVERALL RESULTS ######################################
+    // The guarantees that definitely hold:
+    //
+    // 1) the callbacks will fire immediately after the jobs of this batch have been executed, provided the batch has been committed;
+    //
+    // 2) the callbacks will fire immediately for an empty batch, provided it has been committed;
+    //
+    // 3) the 'complete' callback will always be queued first
+    // (this is shown as part the test 'test_callback_will_be_queue_upon_commit_even_if_batch_is_empty');
 }
