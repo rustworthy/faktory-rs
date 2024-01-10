@@ -835,15 +835,15 @@ fn test_callback_will_be_queue_upon_commit_even_if_batch_is_empty() {
 
     let s = t.get_batch_status(bid.clone()).unwrap().unwrap();
     assert_eq!(s.total, 0); // again, there are no jobs in the batch ...
-    // In those cases whre the batch is not empty, its state at this point  (where the batch is committed
-    // and all its jobs are done) will be "1" (enqueued). But with empty batch the value is still "" (empty string) for
-    // `success_callback_state` and "1" for `complete_callback_state`
+                            // In those cases whre the batch is not empty, its state at this point  (where the batch is committed
+                            // and all its jobs are done) will be "1" (enqueued). But with empty batch the value is still "" (empty string) for
+                            // `success_callback_state` and "1" for `complete_callback_state`
 
     // The docs say "If you don't push any jobs into the batch, any callbacks will fire immediately upon BATCH COMMIT."
-    // and "the success callback for a batch will always enqueue after the complete callback"  
+    // and "the success callback for a batch will always enqueue after the complete callback"
     assert_eq!(s.complete_callback_state, "1"); // queued
     assert_eq!(s.success_callback_state, ""); // not queued
-    
+
     let mut c = ConsumerBuilder::default();
     c.register(jobtype, move |_job| -> io::Result<_> { Ok(()) });
     let mut c = c.connect(Some(&url)).unwrap();
@@ -949,7 +949,7 @@ fn test_batch_can_be_reopened_add_extra_jobs_and_batches_added() {
     let s = t.get_batch_status(nested_bid.clone()).unwrap().unwrap();
     assert_eq!(s.total, 0);
     assert_eq!(s.parent_bid, Some(bid)); // this is really our child batch
-    
+
     // let's check the callbacks have been queued
     //"order_clean_up__NESTED",
     // "test_batch_can_be_reopned_add_extra_jobs_added__CALLBACKs__NESTED",
