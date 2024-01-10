@@ -835,9 +835,6 @@ fn test_callback_will_be_queue_upon_commit_even_if_batch_is_empty() {
 
     let s = t.get_batch_status(bid.clone()).unwrap().unwrap();
     assert_eq!(s.total, 0); // again, there are no jobs in the batch ...
-                            // In those cases whre the batch is not empty, its state at this point  (where the batch is committed
-                            // and all its jobs are done) will be "1" (enqueued). But with empty batch the value is still "" (empty string) for
-                            // `success_callback_state` and "1" for `complete_callback_state`
 
     // The docs say "If you don't push any jobs into the batch, any callbacks will fire immediately upon BATCH COMMIT."
     // and "the success callback for a batch will always enqueue after the complete callback"
@@ -949,10 +946,7 @@ fn test_batch_can_be_reopened_add_extra_jobs_and_batches_added() {
     let s = t.get_batch_status(nested_bid.clone()).unwrap().unwrap();
     assert_eq!(s.total, 0);
     assert_eq!(s.parent_bid, Some(bid)); // this is really our child batch
-
-    // let's check the callbacks have been queued
-    //"order_clean_up__NESTED",
-    // "test_batch_can_be_reopned_add_extra_jobs_added__CALLBACKs__NESTED",
+    assert_eq!(s.complete_callback_state, "1"); // has been enqueud
 
     // Subtest 2 result:
     // We managed to open an already committed batch "from outside" and the server accepted
@@ -964,7 +958,7 @@ fn test_batch_can_be_reopened_add_extra_jobs_and_batches_added() {
     // """Once a callback has enqueued for a batch, you may not add anything to the batch."""
     // ref: https://github.com/contribsys/faktory/wiki/Ent-Batches#guarantees (Jan 10, 2024)
 
-    // Let's try to reopen the nested batch that we have already committed and add some jobs to it.
+    // Let's try to re-open the nested batch that we have already committed and add some jobs to it.
     let mut b = p.open_batch(nested_bid.clone()).unwrap();
     assert_eq!(b.id(), nested_bid); // this is to make sure this is the same batch INDEED
     let mut more_jobs = some_jobs(
@@ -977,7 +971,8 @@ fn test_batch_can_be_reopened_add_extra_jobs_and_batches_added() {
     b.commit().unwrap();
 
     let s = t.get_batch_status(nested_bid.clone()).unwrap().unwrap();
+    assert_eq!(s.complete_callback_state, "1"); // again, it has been enqueud ...
+    assert_eq!(s.pending, 2); // ... though there are pending jobs
     assert_eq!(s.total, 2);
-    assert_eq!(s.pending, 2);
     // ############################## END OF SUBTEST 3 #####################################
 }
