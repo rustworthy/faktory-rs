@@ -807,17 +807,14 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
 
 #[test]
 fn test_callback_will_be_queue_upon_commit_even_if_batch_is_empty() {
-    use std::{thread, time};
-
+    // use std::{thread, time};
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
     let mut p = Producer::connect(Some(&url)).unwrap();
     let mut t = Tracker::connect(Some(&url)).unwrap();
-    let mut callbacks = some_jobs(
-        "callback_jobtype",
-        "test_callback_will_be_queue_upon_commit_even_if_batch_is_empty",
-        2,
-    );
+    let jobtype = "callback_jobtype";
+    let q_name = "test_callback_will_be_queue_upon_commit_even_if_batch_is_empty";
+    let mut callbacks = some_jobs(jobtype, q_name, 2);
     let b = p
         .start_batch(
             Batch::builder("Orders processing workload".to_string())
@@ -833,8 +830,12 @@ fn test_callback_will_be_queue_upon_commit_even_if_batch_is_empty() {
 
     b.commit().unwrap();
 
-    // let's give the Faktory server some time:
-    thread::sleep(time::Duration::from_secs(2));
+    // // let's give the Faktory server some time:
+    // thread::sleep(time::Duration::from_secs(2));
+    let mut c = ConsumerBuilder::default();
+    c.register(jobtype, move |_job| -> io::Result<_> { Ok(()) });
+    let mut c = c.connect(Some(&url)).unwrap();
+    assert_had_one!(&mut c, q_name);
 
     let s = t.get_batch_status(bid).unwrap().unwrap();
     assert_eq!(s.total, 0); // again, there are no jobs in the batch ...
