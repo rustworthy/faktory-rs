@@ -36,6 +36,15 @@ fn learn_faktory_url() -> String {
     url.to_str().expect("Is a utf-8 string").to_owned()
 }
 
+fn some_jobs<S>(kind: S, q: S, count: usize) -> impl Iterator<Item = Job>
+where
+    S: Into<String> + Clone + 'static,
+{
+    (0..count)
+        .into_iter()
+        .map(move |_| Job::builder(kind.clone()).queue(q.clone()).build())
+}
+
 #[test]
 fn ent_expiring_job() {
     use std::{thread, time};
@@ -706,16 +715,6 @@ fn test_batches_can_be_nested() {
     assert_eq!(grandchild_status.parent_bid, Some(child_batch_id));
 }
 
-fn some_jobs(
-    kind: impl Into<String> + Clone + 'static,
-    q: impl Into<String> + Clone + 'static,
-    count: usize,
-) -> impl Iterator<Item = Job> {
-    (0..count)
-        .into_iter()
-        .map(move |_| Job::builder(kind.clone()).queue(q.clone()).build())
-}
-
 #[test]
 fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
     skip_if_not_enterprise!();
@@ -807,7 +806,8 @@ fn test_callback_will_not_be_queued_unless_batch_gets_committed() {
 
 #[test]
 fn test_callback_will_be_queue_upon_commit_even_if_batch_is_empty() {
-    // use std::{thread, time};
+    use std::{thread, time};
+
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
     let mut p = Producer::connect(Some(&url)).unwrap();
@@ -830,29 +830,39 @@ fn test_callback_will_be_queue_upon_commit_even_if_batch_is_empty() {
 
     b.commit().unwrap();
 
-    // // let's give the Faktory server some time:
-    // thread::sleep(time::Duration::from_secs(2));
-    let mut c = ConsumerBuilder::default();
-    c.register(jobtype, move |_job| -> io::Result<_> { Ok(()) });
-    let mut c = c.connect(Some(&url)).unwrap();
-    assert_had_one!(&mut c, q_name);
+    // let's give the Faktory server some time:
+    thread::sleep(time::Duration::from_secs(2));
 
     let s = t.get_batch_status(bid).unwrap().unwrap();
     assert_eq!(s.total, 0); // again, there are no jobs in the batch ...
-    assert_eq!(s.success_callback_state, "1"); // ... but the 'success' callback has been queued ...
-    assert_eq!(s.complete_callback_state, "1"); // ... as well as the 'complete' one
+
+    // In those cases whre the batch is not empty, its state at this point  (where the batch is committed
+    // and all its jobs are done) will be "1" (enqueued). But with empty batch the value is still empty string.
+    // This is something known from the practive rather than a documented behavior. This is also not mentioned in the docs:
+    // https://github.com/contribsys/faktory/wiki/Ent-Batches#guarantees
+    assert_eq!(s.success_callback_state, "");
+    assert_eq!(s.complete_callback_state, "");
+
+    // But what IS mentioned is:
+    // """If you don't push any jobs into the batch, any callbacks will fire immediately upon BATCH COMMIT."""
+    // ref: https://github.com/contribsys/faktory/wiki/Ent-Batches#guarantees (Jan 10, 2024)
+    let mut c = ConsumerBuilder::default();
+    c.register(jobtype, move |_job| -> io::Result<_> { Ok(()) });
+    let mut c = c.connect(Some(&url)).unwrap();
+
+    assert_had_one!(&mut c, q_name);
 }
 
 #[test]
-fn test_can_open_batch_and_add_more_jobs() {
+fn test_batch_can_be_reopened_add_extra_jobs_and_batches_added() {
     skip_if_not_enterprise!();
     let url = learn_faktory_url();
     let mut p = Producer::connect(Some(&url)).unwrap();
     let mut t = Tracker::connect(Some(&url)).unwrap();
-    let mut jobs = some_jobs("order", "test_can_open_batch_and_add_more_jobs", 4);
+    let mut jobs = some_jobs("order", "test_batch_can_be_reopned_add_extra_jobs_added", 4);
     let mut callbacks = some_jobs(
         "order_clean_up",
-        "test_can_open_batch_and_add_more_jobs__CALLBACKs",
+        "test_batch_can_be_reopned_add_extra_jobs_added__CALLBACKs",
         1,
     );
 
@@ -868,7 +878,8 @@ fn test_can_open_batch_and_add_more_jobs() {
     assert_eq!(status.total, 2);
     assert_eq!(status.pending, 2);
 
-    // opening an uncommitted batch:
+    // ############################## SUBTEST 0 ##########################################
+    // Let's fist of all try to open the batch we have not committed yet:
     let mut b = p.open_batch(bid.clone()).unwrap();
     assert_eq!(b.id(), bid);
     b.add(jobs.next().unwrap()).unwrap(); // 3 jobs
@@ -879,6 +890,11 @@ fn test_can_open_batch_and_add_more_jobs() {
     assert_eq!(status.total, 3);
     assert_eq!(status.pending, 3);
 
+    // Subtest 0 result:
+    // The Faktory server let's us open the uncommitted batch. This is something not mention
+    // in the docs, but still worth checking.
+
+    // ############################## SUBTEST 1 ##########################################
     // From the docs:
     // """Note that, once committed, only a job within the batch may reopen it.
     // Faktory will return an error if you dynamically add jobs from "outside" the batch;
@@ -889,11 +905,65 @@ fn test_can_open_batch_and_add_more_jobs() {
     let mut b = p.open_batch(bid.clone()).unwrap();
     assert_eq!(b.id(), bid);
     b.add(jobs.next().unwrap()).unwrap(); // 4 jobs
-    b.commit().unwrap();
-
-    // So, the server accepted the job instead of erroring back.
+    b.commit().unwrap(); // committing the batch again!
 
     let s = t.get_batch_status(bid.clone()).unwrap().unwrap();
     assert_eq!(s.total, 4);
     assert_eq!(s.pending, 4);
+
+    // Subtest 1 result:
+    // We managed to open a batch "from outside" and the server accepted the job INSTEAD OF ERRORING BACK.
+    // ############################ END OF SUBTEST 1 #######################################
+
+    // ############################## SUBTEST 2 ############################################
+    // Let's see if we will be able to - again - open the committed batch "from outside" and
+    // add a nested batch to it.
+    let mut b = p.open_batch(bid.clone()).unwrap();
+    assert_eq!(b.id(), bid); // this is to make sure this is the same batch INDEED
+    let mut nested_callbacks = some_jobs(
+        "order_clean_up__NESTED",
+        "test_batch_can_be_reopned_add_extra_jobs_added__CALLBACKs__NESTED",
+        2,
+    );
+    let newsted_batch_declaration =
+        Batch::builder("Orders processing workload. Nested stage".to_string()).with_callbacks(
+            nested_callbacks.next().unwrap(),
+            nested_callbacks.next().unwrap(),
+        );
+    let nested_batch = b.start_batch(newsted_batch_declaration).unwrap();
+    let nested_bid = nested_batch.id().to_string();
+    // committing the nested batch without any jobs
+    // since those are just not relevant for this test:
+    nested_batch.commit().unwrap();
+
+    let s = t.get_batch_status(nested_bid.clone()).unwrap().unwrap();
+    assert_eq!(s.total, 0);
+    assert_eq!(s.parent_bid, Some(bid)); // this is really our child batch
+
+    // Subtest 2 result:
+    // We managed to open an already committed batch "from outside" and the server accepted
+    // a nested batch INSTEAD OF ERRORING BACK.
+    // ############################ END OF SUBTEST 2 #######################################
+
+    // ############################## SUBTEST 3 ############################################
+    // From the docs: 
+    // """Once a callback has enqueued for a batch, you may not add anything to the batch."""
+    // ref: https://github.com/contribsys/faktory/wiki/Ent-Batches#guarantees (Jan 10, 2024)
+
+    // Let's try to reopen the nested batch that we have already committed and add some jobs to it.
+    let mut b = p.open_batch(nested_bid.clone()).unwrap();
+    assert_eq!(b.id(), nested_bid); // this is to make sure this is the same batch INDEED
+    let mut more_jobs = some_jobs(
+        "order_clean_up__NESTED",
+        "test_batch_can_be_reopned_add_extra_jobs_added__NESTED",
+        2,
+    );
+    b.add(more_jobs.next().unwrap()).unwrap();
+    b.add(more_jobs.next().unwrap()).unwrap();
+    b.commit().unwrap();
+
+    let s = t.get_batch_status(nested_bid.clone()).unwrap().unwrap();
+    assert_eq!(s.total, 2);
+    assert_eq!(s.pending, 2);
+    // ############################## END OF SUBTEST 3 #####################################
 }
