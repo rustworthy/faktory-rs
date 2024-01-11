@@ -4,10 +4,13 @@ use std::net::TcpStream;
 use crate::proto::{host_from_url, parse_provided_or_from_env, Client, GetBatchStatus, Track};
 use crate::{BatchStatus, Error, Progress, ProgressUpdate};
 
-/// Used to retrieve and update information on a job's execution progress.
+/// Used for retrieving and updating information on a job's execution progress
+/// (see [`Progress`] and [`ProgressUpdate`]), as well for retrieving a batch's status
+/// from the Faktory server (see [`BatchStatus`]).
 ///
+/// Fetching a job's execution progress:
 /// ```no_run
-/// # use faktory::Tracker;
+/// use faktory::Tracker;
 /// let job_id = String::from("W8qyVle9vXzUWQOf");
 /// let mut tracker = Tracker::connect(None)?;
 /// if let Some(progress) = tracker.get_progress(job_id)? {
@@ -16,6 +19,28 @@ use crate::{BatchStatus, Error, Progress, ProgressUpdate};
 ///         ...
 ///       # */
 ///     }
+/// }
+/// # Ok::<(), faktory::Error>(())
+/// ```
+/// Sending an update on a job's execution progress:
+/// ```no_run
+/// use faktory::{Tracker, ProgressUpdateBuilder};
+/// let jid = String::from("W8qyVle9vXzUWQOf");
+/// let mut tracker = Tracker::connect(None)?;
+/// let progress = ProgressUpdateBuilder::new(&jid)
+///     .desc("Almost done...".to_owned())
+///     .percent(99)
+///     .build();
+/// tracker.set_progress(progress)?;
+/// # Ok::<(), faktory::Error>(())
+///````
+/// Fetching a batch's status:
+/// ```no_run
+/// use faktory::Tracker;
+/// let bid = String::from("W8qyVle9vXzUWQOg");
+/// let mut tracker = Tracker::connect(None)?;
+/// if let Some(status) = tracker.get_batch_status(bid)? {
+///     println!("This batch created at {}", status.created_at);
 /// }
 /// # Ok::<(), faktory::Error>(())
 /// ```
